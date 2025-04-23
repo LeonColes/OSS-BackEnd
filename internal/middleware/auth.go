@@ -4,11 +4,11 @@ import (
 	"net/http"
 	"strings"
 
-	"oss-backend/internal/config"
 	"oss-backend/internal/service"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
+	"honnef.co/go/tools/config"
 )
 
 // JWTMiddleware JWT认证中间件结构体

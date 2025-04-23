@@ -1,10 +1,10 @@
 package common
 
-// Response 通用响应结构
+// Response API 统一响应结构
 type Response struct {
-	Code    int         `json:"code"`
-	Message string      `json:"message"`
-	Data    interface{} `json:"data,omitempty"`
+	Code    int         `json:"code"`           // 状态码
+	Message string      `json:"message"`        // 消息
+	Data    interface{} `json:"data,omitempty"` // 数据
 }
 
 // 预定义错误
@@ -16,29 +16,27 @@ var (
 	ServerError       = "服务器内部错误"
 )
 
-// 成功响应
+// SuccessResponse 成功响应
 func SuccessResponse(data interface{}) *Response {
 	return &Response{
-		Code:    200,
-		Message: "操作成功",
+		Code:    0,
+		Message: "success",
 		Data:    data,
 	}
 }
 
-// 错误响应
-func ErrorResponse(err interface{}) *Response {
-	var message string
-	switch v := err.(type) {
-	case error:
-		message = v.Error()
-	case string:
-		message = v
-	default:
-		message = ServerError
-	}
-
+// ErrorResponse 错误响应
+func ErrorResponse(message string) *Response {
 	return &Response{
-		Code:    500,
+		Code:    -1,
+		Message: message,
+	}
+}
+
+// ErrorWithCodeResponse 带状态码的错误响应
+func ErrorWithCodeResponse(code int, message string) *Response {
+	return &Response{
+		Code:    code,
 		Message: message,
 	}
 }

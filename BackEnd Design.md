@@ -22,26 +22,39 @@
 
 ```
 oss-backend/
-├── cmd/                  # 应用入口
-│   └── server/           # API服务器入口
-├── config/               # 配置文件
-├── internal/             # 内部代码
-│   ├── api/              # API接口定义
-│   │   ├── auth/         # 认证接口
-│   │   ├── group/        # 群组接口
-│   │   ├── project/      # 项目接口
-│   │   ├── file/         # 文件接口
-│   │   └── log/          # 日志接口
-│   ├── middleware/       # 中间件
-│   │   ├── auth.go       # 认证中间件
-│   │   ├── rbac.go       # 权限控制中间件
-│   │   └── logger.go     # 日志中间件
-│   ├── model/            # 数据模型
-│   ├── repository/       # 数据访问层
-│   ├── service/          # 业务逻辑层
-│   └── util/             # 工具函数
-├── pkg/                  # 可被外部引用的包
-└── test/                 # 测试
+├── main.go                          # 应用主入口
+├── go.mod                           # Go 模块文件
+├── go.sum                           # Go 模块文件
+├── README.md                        # 项目说明
+├── docs/                            # 文档目录及API文档
+│   └── swagger/                     # Swagger自动生成文档
+├── configs/                         # 配置文件目录
+├── internal/                        # 内部代码
+│   ├── model/                       # 数据模型
+│   │   ├── entity/                  # 数据库实体
+│   │   │   ├── role.go              # 角色实体
+│   │   │   └── user.go              # 用户实体
+│   │   └── dto/                     # 数据传输对象
+│   │       ├── role_dto.go          # 角色DTO
+│   │       └── user_dto.go          # 用户DTO
+│   ├── controller/                  # 控制器层
+│   │   ├── role_controller.go       # 角色控制器
+│   │   └── user_controller.go       # 用户控制器
+│   ├── service/                     # 服务层
+│   │   ├── role_service.go          # 角色服务
+│   │   └── user_service.go          # 用户服务
+│   ├── repository/                  # 数据访问层
+│   │   ├── role_repository.go       # 角色仓库
+│   │   └── user_repository.go       # 用户仓库
+│   └── middleware/                  # 中间件
+│       └── auth.go                  # 认证中间件
+├── pkg/                             # 公共代码
+│   ├── common/                      # 通用工具
+│   │   └── response.go              # 统一响应格式
+│   └── minio/                       # 文件存储
+├── routes/                          # 路由定义
+│   └── routes.go                    # 所有路由
+└── uploads/                         # 文件上传目录
 ```
 
 ### 3. 数据流架构
