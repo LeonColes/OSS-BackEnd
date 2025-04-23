@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"oss-backend/internal/service"
+	"oss-backend/internal/utils"
 	"oss-backend/pkg/common"
 )
 
@@ -137,7 +138,7 @@ func (m *CasbinMiddleware) AuthCheckForGroup() gin.HandlerFunc {
 		}
 
 		// 从HTTP方法映射到操作
-		act := MapMethodToAction(c.Request.Method)
+		act := utils.MapMethodToAction(c.Request.Method)
 
 		// 构造用户标识
 		sub := fmt.Sprintf("user:%d", userID)
@@ -234,7 +235,7 @@ func (m *CasbinMiddleware) AuthCheckForProject() gin.HandlerFunc {
 		}
 
 		// 从HTTP方法映射到操作
-		act := MapMethodToAction(c.Request.Method)
+		act := utils.MapMethodToAction(c.Request.Method)
 
 		// 构造用户标识
 		sub := fmt.Sprintf("user:%d", userID)

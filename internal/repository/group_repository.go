@@ -40,6 +40,10 @@ type GroupRepository interface {
 	// 邀请码管理
 	GenerateInviteCode(ctx context.Context, groupID uint64, expireDays int) (string, time.Time, error)
 	UpdateGroupInviteCode(ctx context.Context, groupID uint64, code string, expireAt *time.Time) error
+
+	// 新增方法：权限检查
+	CheckUserGroupRole(ctx context.Context, userID, groupID uint64, role string) (bool, error)
+	CheckUserInGroup(ctx context.Context, userID, groupID uint64) (bool, error)
 }
 
 // groupRepository 群组仓库实现
@@ -280,4 +284,24 @@ func (r *groupRepository) UpdateGroupInviteCode(ctx context.Context, groupID uin
 			"invite_code":       code,
 			"invite_expires_at": expireAt,
 		}).Error
+}
+
+// CheckUserGroupRole 检查用户在群组中是否拥有指定角色
+func (r *groupRepository) CheckUserGroupRole(ctx context.Context, userID, groupID uint64, role string) (bool, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Model(&entity.GroupMember{}).
+		Where("group_id = ? AND user_id = ? AND role = ?", groupID, userID, role).
+		Count(&count).Error
+
+	return count > 0, err
+}
+
+// CheckUserInGroup 检查用户是否在群组中
+func (r *groupRepository) CheckUserInGroup(ctx context.Context, userID, groupID uint64) (bool, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Model(&entity.GroupMember{}).
+		Where("group_id = ? AND user_id = ?", groupID, userID).
+		Count(&count).Error
+
+	return count > 0, err
 }

@@ -38,6 +38,12 @@ func SetupRouter(r *gin.Engine, db interface{}) {
 	// 创建角色中间件
 	roleMiddleware := middleware.NewRoleAuthMiddleware(userRepo)
 
+	// 创建Casbin服务
+	casbinSvc, err := service.NewCasbinService(gormDB, userRepo, roleRepo, groupRepo)
+	if err != nil {
+		panic("创建Casbin服务失败: " + err.Error())
+	}
+
 	// 设置 API 前缀
 	apiGroup := r.Group("/api/oss")
 
@@ -50,8 +56,8 @@ func SetupRouter(r *gin.Engine, db interface{}) {
 	// 注册群组相关路由
 	registerGroupRoutes(apiGroup, userRepo, roleRepo, groupRepo, jwtMiddleware)
 
-	// 注册项目相关路由 (空壳)
-	registerProjectRoutes(apiGroup, jwtMiddleware)
+	// 注册项目相关路由
+	registerProjectRoutes(apiGroup, gormDB, jwtMiddleware, casbinSvc)
 
 	// 注册文件相关路由 (空壳)
 	registerFileRoutes(apiGroup, jwtMiddleware)
@@ -150,17 +156,37 @@ func registerGroupRoutes(apiGroup *gin.RouterGroup, userRepo repository.UserRepo
 	}
 }
 
-// 注册项目相关路由 (空壳)
-func registerProjectRoutes(apiGroup *gin.RouterGroup, jwtMiddleware *middleware.JWTAuthMiddleware) {
+// 注册项目相关路由
+func registerProjectRoutes(apiGroup *gin.RouterGroup, db *gorm.DB, jwtMiddleware *middleware.JWTAuthMiddleware, casbinService service.CasbinService) {
+	// 初始化项目仓库和服务
+	projectRepo := repository.NewProjectRepository(db)
+	groupRepo := repository.NewGroupRepository(db)
+	userRepo := repository.NewUserRepository(db)
+
+	projectService := service.NewProjectService(
+		projectRepo,
+		groupRepo,
+		userRepo,
+		casbinService,
+	)
+	projectController := controller.NewProjectController(projectService)
+
+	// 项目相关路由
 	projectGroup := apiGroup.Group("/project")
 	projectGroup.Use(jwtMiddleware.AuthMiddleware())
 	{
-		// 项目相关路由 (空壳)
-		projectGroup.POST("/create", func(c *gin.Context) {})
-		projectGroup.POST("/update", func(c *gin.Context) {})
-		projectGroup.GET("/delete/:id", func(c *gin.Context) {})
-		projectGroup.GET("/detail/:id", func(c *gin.Context) {})
-		projectGroup.GET("/list", func(c *gin.Context) {})
+		// 项目管理
+		projectGroup.POST("/create", projectController.CreateProject)
+		projectGroup.POST("/update", projectController.UpdateProject)
+		projectGroup.GET("/detail/:id", projectController.GetProjectByID)
+		projectGroup.GET("/delete/:id", projectController.DeleteProject)
+		projectGroup.GET("/list", projectController.ListProjects)
+		projectGroup.GET("/user", projectController.GetUserProjects)
+
+		// 项目成员管理
+		projectGroup.POST("/permission/set", projectController.SetPermission)
+		projectGroup.POST("/permission/remove", projectController.RemovePermission)
+		projectGroup.GET("/users/:id", projectController.ListProjectUsers)
 	}
 }
 

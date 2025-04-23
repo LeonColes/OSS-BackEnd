@@ -7,6 +7,12 @@ type Response struct {
 	Data    interface{} `json:"data,omitempty"` // 数据
 }
 
+// PageResult 分页结果
+type PageResult struct {
+	Total int64       `json:"total"` // 总记录数
+	List  interface{} `json:"list"`  // 数据列表
+}
+
 // 预定义错误
 var (
 	ParamBindError    = "参数绑定错误"
