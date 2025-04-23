@@ -111,13 +111,6 @@ func (r *roleRepository) InitSystemRoles(ctx context.Context) error {
 	// 预定义的系统角色
 	systemRoles := []*entity.Role{
 		{
-			Name:        "系统管理员",
-			Description: "系统最高权限管理员",
-			Code:        entity.RoleSystemAdmin,
-			Status:      1,
-			IsSystem:    true,
-		},
-		{
 			Name:        "群组管理员",
 			Description: "群组管理员",
 			Code:        entity.RoleGroupAdmin,

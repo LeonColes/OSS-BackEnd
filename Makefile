@@ -1,4 +1,4 @@
-.PHONY: build run dev clean docker-build docker-compose init-db create-db swagger
+.PHONY: build run dev clean docker-build docker-compose init-db create-db swagger docs api-docs all-docs
 
 # 默认目标
 all: build
@@ -51,12 +51,43 @@ logs:
 swagger:
 	@echo "生成Swagger文档..."
 ifeq ($(OS),Windows_NT)
-	@go install github.com/swaggo/swag/swag@latest
+	@go install github.com/swaggo/swag/cmd/swag@latest
 	@swag init -g main.go -o docs/swagger
 else
-	@go install github.com/swaggo/swag/swag@latest
+	@go install github.com/swaggo/swag/cmd/swag@latest
 	@$(shell go env GOPATH)/bin/swag init -g main.go -o docs/swagger
 endif
+
+# 生成API文档（基于Swagger）
+api-docs: swagger
+	@echo "生成API文档完成。可在运行应用后访问: http://localhost:8080/swagger/index.html"
+
+# 生成代码文档
+code-docs:
+	@echo "生成Go代码文档..."
+ifeq ($(OS),Windows_NT)
+	@go install golang.org/x/tools/cmd/godoc@latest
+	@echo "文档服务已启动，请访问: http://localhost:6060/pkg/oss-backend/"
+	@godoc -http=:6060
+else
+	@go install golang.org/x/tools/cmd/godoc@latest
+	@echo "文档服务已启动，请访问: http://localhost:6060/pkg/oss-backend/"
+	@$(shell go env GOPATH)/bin/godoc -http=:6060
+endif
+
+# 生成所有文档
+all-docs: swagger api-docs
+	@echo "所有文档已生成"
+
+# 启动文档服务器
+serve-docs: all-docs
+	@echo "启动文档服务器..."
+ifeq ($(OS),Windows_NT)
+	@cd docs/swagger && python -m http.server 8090
+else
+	@cd docs/swagger && python3 -m http.server 8090
+endif
+	@echo "文档服务器已启动，请访问: http://localhost:8090"
 
 # 帮助信息
 help:
@@ -75,3 +106,7 @@ help:
 	@echo "  make init-db        - 通过Docker初始化数据库"
 	@echo "  make create-db      - 不依赖Docker创建和初始化数据库"
 	@echo "  make swagger        - 生成Swagger文档"
+	@echo "  make api-docs       - 生成API文档（包含Swagger）"
+	@echo "  make code-docs      - 生成代码文档并启动godoc服务器"
+	@echo "  make all-docs       - 生成所有文档"
+	@echo "  make serve-docs     - 启动文档Web服务器" 
