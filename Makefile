@@ -5,7 +5,7 @@ all: build
 
 # 构建应用
 build:
-	go build -o bin/oss-backend cmd/main.go
+	go build -o bin/oss-backend main.go
 
 # 运行应用
 run: build
@@ -13,7 +13,7 @@ run: build
 
 # 开发模式运行
 dev:
-	go run cmd/main.go
+	go run main.go
 
 # 清理构建文件
 clean:
@@ -51,11 +51,11 @@ logs:
 swagger:
 	@echo "生成Swagger文档..."
 ifeq ($(OS),Windows_NT)
-	@go install github.com/swaggo/swag/cmd/swag@latest
-	@swag init -g cmd/main.go -o docs/swagger
+	@go install github.com/swaggo/swag/swag@latest
+	@swag init -g main.go -o docs/swagger
 else
-	@go install github.com/swaggo/swag/cmd/swag@latest
-	@$(shell go env GOPATH)/bin/swag init -g cmd/main.go -o docs/swagger
+	@go install github.com/swaggo/swag/swag@latest
+	@$(shell go env GOPATH)/bin/swag init -g main.go -o docs/swagger
 endif
 
 # 帮助信息
