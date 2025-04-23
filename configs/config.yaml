@@ -1,0 +1,45 @@
+# 服务器配置
+server:
+  port: 8080
+  mode: development # development 或 production
+
+# 数据库配置
+database:
+  driver: mysql
+  dsn: root:password@tcp(localhost:3306)/oss_system?charset=utf8mb4&parseTime=True&allowNativePasswords=true
+  max_idle_conns: 10
+  max_open_conns: 100
+  conn_max_lifetime: 3600
+
+# Redis配置
+redis:
+  addr: localhost:6379
+  password: ""
+  db: 0
+
+# MinIO配置
+minio:
+  endpoint: localhost:9000
+  access_key: minioadmin
+  secret_key: minioadmin
+  use_ssl: false
+  bucket_location: us-east-1
+
+# JWT配置
+jwt:
+  secret: "your-secret-key-change-in-production"
+  expire_hours: 24 # 访问令牌过期时间（小时）
+  refresh_expire_hours: 168 # 刷新令牌过期时间（7天）
+
+# 文件存储配置
+storage:
+  upload_path: "./uploads"
+  temp_path: "./temp"
+  max_file_size: 1073741824 # 1GB
+  allowed_types: ["image/jpeg", "image/png", "application/pdf", "text/plain"]
+
+# 日志配置
+log:
+  level: info # debug, info, warn, error
+  format: json # text 或 json
+  output: stdout # stdout 或 文件路径 

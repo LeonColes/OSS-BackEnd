@@ -1,0 +1,76 @@
+# 二进制文件
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+oss-backend.exe
+
+# 测试二进制文件
+*.test
+
+# 输出和日志文件
+*.out
+*.log
+logs/
+
+# 依赖文件
+vendor/
+
+# IDE和编辑器文件
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+
+# 环境配置文件
+.env
+.env.*
+!.env.example
+
+# 临时目录和文件
+/tmp
+/temp
+/uploads
+/temp
+
+# 构建生成的文件
+/bin
+/dist
+
+# 配置文件的本地副本（如果有）
+/configs/config.local.yaml
+/configs/config.prod.yaml
+
+# 测试数据和覆盖率报告
+/test/coverage/
+
+# 数据库相关
+*.db
+*.sqlite
+
+# 调试文件
+__debug_bin
+debug.test
+
+# API文档自动生成的文件
+/docs/swagger/
+/api/swagger/
+
+# MinIO存储桶的临时数据
+/minio-data/
+
+# 系统特定临时文件
+.directory
+.fuse_hidden*
+.Trash-*
+.nfs*
+
+# 特定于项目的临时文件
+.tokens/
+/debug/ 
