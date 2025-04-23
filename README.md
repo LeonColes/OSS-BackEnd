@@ -252,11 +252,12 @@ Authorization: Bearer {access_token}
 Swagger文档定义了多个环境，可在Apifox中轻松切换：
 
 1. **本地开发环境**：http://localhost:8080/api/oss
-2. **测试环境**：http://test-api.example.com/api/oss
-3. **生产环境**：http://api.example.com/api/oss
+2. **测试环境**：http://test-api.example.com/api/oss   // 待开放
+3. **生产环境**：http://api.example.com/api/OSS        // 待开放
 
 导入Apifox后，可以根据需要修改这些环境配置的URL。
 
-## 许可证
-
-[MIT License](LICENSE) 
+## 更多文档
+[产品设计文档](./Product%20Design.md)
+[后端设计文档](./BackEnd%20Design.md)
+[角色设计文档](./Role%20Design.md)
