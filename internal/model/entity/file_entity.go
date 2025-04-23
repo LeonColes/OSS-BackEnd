@@ -1,4 +1,4 @@
-package model
+package entity
 
 import (
 	"time"
@@ -27,7 +27,7 @@ type File struct {
 	CurrentVersion int            `gorm:"default:1;not null" json:"current_version"`
 	PreviewURL     string         `gorm:"type:varchar(512)" json:"preview_url"`
 	GormDeletedAt  gorm.DeletedAt `gorm:"index" json:"-"` // 用于GORM的软删除，区别于业务上的IsDeleted标志
-	
+
 	Project  Project `gorm:"foreignKey:ProjectID" json:"project"`
 	Uploader User    `gorm:"foreignKey:UploaderID" json:"uploader"`
 	Deleter  *User   `gorm:"foreignKey:DeletedBy" json:"deleter,omitempty"`
@@ -48,7 +48,7 @@ type FileVersion struct {
 	UploaderID uint64    `gorm:"type:bigint unsigned;not null" json:"uploader_id"`
 	CreatedAt  time.Time `json:"created_at"`
 	Comment    string    `gorm:"type:varchar(255)" json:"comment"`
-	
+
 	File     File `gorm:"foreignKey:FileID" json:"file"`
 	Uploader User `gorm:"foreignKey:UploaderID" json:"uploader"`
 }
@@ -69,7 +69,7 @@ type FileShare struct {
 	DownloadLimit int        `gorm:"default:0" json:"download_limit"` // 0表示无限制
 	DownloadCount int        `gorm:"default:0" json:"download_count"`
 	CreatedAt     time.Time  `json:"created_at"`
-	
+
 	File File `gorm:"foreignKey:FileID" json:"file"`
 	User User `gorm:"foreignKey:UserID" json:"user"`
 }
@@ -77,4 +77,4 @@ type FileShare struct {
 // TableName 表名
 func (FileShare) TableName() string {
 	return "file_shares"
-} 
+}

@@ -4,16 +4,61 @@ import (
 	"net/http"
 	"strings"
 
+	"oss-backend/internal/config"
+	"oss-backend/internal/service"
+
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
-	"github.com/leoncoles/oss-backend/internal/config"
 )
 
-// UserClaims 用户JWT声明
-type UserClaims struct {
-	UserID uint   `json:"user_id"`
-	Email  string `json:"email"`
-	jwt.RegisteredClaims
+// JWTMiddleware JWT认证中间件结构体
+type JWTMiddleware struct {
+	authService service.AuthService
+}
+
+// NewJWTMiddleware 创建JWT中间件
+func NewJWTMiddleware(authService service.AuthService) *JWTMiddleware {
+	return &JWTMiddleware{
+		authService: authService,
+	}
+}
+
+// AuthMiddleware 认证中间件函数
+func (m *JWTMiddleware) AuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// 从请求头获取token
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "未授权：缺少Authorization请求头"})
+			c.Abort()
+			return
+		}
+
+		// 解析Bearer令牌
+		parts := strings.SplitN(authHeader, " ", 2)
+		if !(len(parts) == 2 && parts[0] == "Bearer") {
+			c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "未授权：授权格式错误"})
+			c.Abort()
+			return
+		}
+
+		// 获取令牌
+		tokenString := parts[1]
+
+		// 验证令牌
+		claims, err := m.authService.ValidateToken(tokenString)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "未授权：" + err.Error()})
+			c.Abort()
+			return
+		}
+
+		// 将用户ID和角色存入上下文
+		c.Set("userID", claims.UserID)
+		c.Set("userEmail", claims.Email)
+
+		c.Next()
+	}
 }
 
 // JWTAuth JWT认证中间件
@@ -39,8 +84,7 @@ func JWTAuth() gin.HandlerFunc {
 		tokenString := parts[1]
 
 		// 解析令牌
-		// 注意：这里只是一个占位实现，实际项目中需要从配置加载密钥
-		token, err := jwt.ParseWithClaims(tokenString, &UserClaims{}, func(token *jwt.Token) (interface{}, error) {
+		token, err := jwt.ParseWithClaims(tokenString, &jwtUserClaims{}, func(token *jwt.Token) (interface{}, error) {
 			// 从配置获取JWT密钥
 			cfg, err := config.Load()
 			if err != nil {
@@ -56,9 +100,9 @@ func JWTAuth() gin.HandlerFunc {
 		}
 
 		// 验证令牌
-		if claims, ok := token.Claims.(*UserClaims); ok && token.Valid {
+		if claims, ok := token.Claims.(*jwtUserClaims); ok && token.Valid {
 			// 将用户信息存入上下文
-			c.Set("user_id", claims.UserID)
+			c.Set("userID", claims.UserID)
 			c.Set("email", claims.Email)
 			c.Next()
 		} else {
@@ -69,11 +113,18 @@ func JWTAuth() gin.HandlerFunc {
 	}
 }
 
+// jwtUserClaims JWT令牌声明结构体
+type jwtUserClaims struct {
+	UserID uint   `json:"user_id"`
+	Email  string `json:"email"`
+	jwt.RegisteredClaims
+}
+
 // RequireRoles 验证角色权限
 func RequireRoles(roles ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 从上下文获取用户ID
-		_, exists := c.Get("user_id")
+		_, exists := c.Get("userID")
 		if !exists {
 			c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "未授权：用户未登录"})
 			c.Abort()
@@ -101,4 +152,4 @@ func RequireRoles(roles ...string) gin.HandlerFunc {
 
 		c.Next()
 	}
-} 
+}

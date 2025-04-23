@@ -84,209 +84,133 @@ oss-backend/
 
 ## 三、数据库设计
 
-### 1. 核心表结构
+### 1. 核心表字段设计
 
 #### 用户表(users)
-```sql
-CREATE TABLE users (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  email VARCHAR(128) NOT NULL UNIQUE COMMENT '用户邮箱，登录凭证',
-  name VARCHAR(64) NOT NULL COMMENT '用户姓名',
-  password_hash VARCHAR(255) NOT NULL COMMENT '密码哈希值',
-  avatar VARCHAR(255) NULL COMMENT '用户头像URL',
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  updated_at TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  last_login_at TIMESTAMP NULL COMMENT '最后登录时间',
-  last_login_ip VARCHAR(50) NULL COMMENT '最后登录IP',
-  status TINYINT NOT NULL DEFAULT 1 COMMENT '状态：1-正常，2-禁用，3-锁定',
-  INDEX idx_email(email) COMMENT '邮箱索引，加速登录查询'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户信息表';
-```
+- **id**: 主键 ID
+- **email**: 用户邮箱，登录凭证
+- **name**: 用户姓名
+- **password_hash**: 密码哈希值
+- **avatar**: 用户头像URL
+- **created_at**: 创建时间
+- **updated_at**: 更新时间
+- **last_login_at**: 最后登录时间
+- **last_login_ip**: 最后登录IP
+- **status**: 状态（1-正常，2-禁用，3-锁定）
 
 #### 群组表(groups)
-```sql
-CREATE TABLE groups (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  name VARCHAR(64) NOT NULL COMMENT '群组名称',
-  description TEXT NULL COMMENT '群组描述',
-  group_key VARCHAR(64) NOT NULL UNIQUE COMMENT 'MinIO桶名',
-  invite_code VARCHAR(32) NOT NULL UNIQUE COMMENT '邀请码',
-  invite_expires_at TIMESTAMP NULL COMMENT '邀请码过期时间',
-  storage_quota BIGINT DEFAULT 0 COMMENT '存储容量配额，0表示无限制',
-  creator_id BIGINT NOT NULL COMMENT '创建者用户ID',
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  updated_at TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  status TINYINT NOT NULL DEFAULT 1 COMMENT '状态：1-正常，2-禁用，3-锁定',
-  FOREIGN KEY (creator_id) REFERENCES users(id),
-  INDEX idx_creator(creator_id) COMMENT '创建者索引'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='群组信息表';
-```
+- **id**: 主键 ID
+- **name**: 群组名称
+- **description**: 群组描述
+- **group_key**: MinIO桶名（唯一）
+- **invite_code**: 邀请码（唯一）
+- **invite_expires_at**: 邀请码过期时间
+- **storage_quota**: 存储容量配额(0表示无限制)
+- **creator_id**: 创建者用户ID
+- **created_at**: 创建时间
+- **updated_at**: 更新时间
+- **status**: 状态（1-正常，2-禁用，3-锁定）
 
 #### 群组成员表(group_members)
-```sql
-CREATE TABLE group_members (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  group_id BIGINT NOT NULL COMMENT '群组ID',
-  user_id BIGINT NOT NULL COMMENT '用户ID',
-  role VARCHAR(20) NOT NULL COMMENT '角色：group_owner, group_admin, member',
-  joined_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '加入时间',
-  updated_at TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  last_active_at TIMESTAMP NULL COMMENT '最后活跃时间',
-  FOREIGN KEY (group_id) REFERENCES groups(id),
-  FOREIGN KEY (user_id) REFERENCES users(id),
-  UNIQUE KEY (group_id, user_id) COMMENT '确保用户在群组中唯一',
-  INDEX idx_group_user(group_id, user_id) COMMENT '加快查询速度'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='群组成员关系表';
-```
+- **id**: 主键 ID
+- **group_id**: 群组ID
+- **user_id**: 用户ID
+- **role**: 角色（group_owner, group_admin, member）
+- **joined_at**: 加入时间
+- **updated_at**: 更新时间
+- **last_active_at**: 最后活跃时间
+- **is_deleted**: 是否已删除（逻辑删除）
 
 #### 项目表(projects)
-```sql
-CREATE TABLE projects (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  group_id BIGINT NOT NULL COMMENT '所属群组ID',
-  name VARCHAR(64) NOT NULL COMMENT '项目名称',
-  description TEXT NULL COMMENT '项目描述',
-  path_prefix VARCHAR(128) NOT NULL COMMENT '存储路径前缀',
-  creator_id BIGINT NOT NULL COMMENT '创建者用户ID',
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  updated_at TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  status TINYINT NOT NULL DEFAULT 1 COMMENT '状态：1-正常，2-归档，3-删除',
-  FOREIGN KEY (group_id) REFERENCES groups(id),
-  FOREIGN KEY (creator_id) REFERENCES users(id),
-  UNIQUE KEY (group_id, path_prefix) COMMENT '确保路径前缀在群组内唯一',
-  INDEX idx_group(group_id) COMMENT '加快群组项目查询'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='项目信息表';
-```
+- **id**: 主键 ID
+- **group_id**: 所属群组ID
+- **name**: 项目名称
+- **description**: 项目描述
+- **path_prefix**: 存储路径前缀
+- **creator_id**: 创建者用户ID
+- **created_at**: 创建时间
+- **updated_at**: 更新时间
+- **status**: 状态（1-正常，2-归档，3-删除）
+- **is_deleted**: 是否已删除（逻辑删除）
 
 #### 项目权限表(permissions)
-```sql
-CREATE TABLE permissions (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  user_id BIGINT NOT NULL COMMENT '用户ID',
-  project_id BIGINT NOT NULL COMMENT '项目ID',
-  role VARCHAR(20) NOT NULL COMMENT '角色：admin, uploader, reader',
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  updated_at TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  expire_at TIMESTAMP NULL COMMENT '权限过期时间',
-  granted_by BIGINT NOT NULL COMMENT '授权人用户ID',
-  FOREIGN KEY (user_id) REFERENCES users(id),
-  FOREIGN KEY (project_id) REFERENCES projects(id),
-  FOREIGN KEY (granted_by) REFERENCES users(id),
-  UNIQUE KEY (user_id, project_id) COMMENT '确保用户在项目中权限唯一',
-  INDEX idx_project_user(project_id, user_id) COMMENT '加快权限查询'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='项目权限表';
-```
+- **id**: 主键 ID
+- **user_id**: 用户ID
+- **project_id**: 项目ID
+- **role**: 角色（admin, uploader, reader）
+- **created_at**: 创建时间
+- **updated_at**: 更新时间
+- **expire_at**: 权限过期时间
+- **granted_by**: 授权人用户ID
+- **is_deleted**: 是否已删除（逻辑删除）
 
 #### 文件表(files)
-```sql
-CREATE TABLE files (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  project_id BIGINT NOT NULL COMMENT '所属项目ID',
-  file_name VARCHAR(255) NOT NULL COMMENT '文件名',
-  file_path VARCHAR(512) NOT NULL COMMENT '文件路径',
-  full_path VARCHAR(768) NOT NULL COMMENT '完整路径，用于唯一性校验',
-  file_hash VARCHAR(64) NOT NULL COMMENT '文件哈希值',
-  file_size BIGINT NOT NULL COMMENT '文件大小(字节)',
-  mime_type VARCHAR(128) NULL COMMENT '文件MIME类型',
-  extension VARCHAR(20) NULL COMMENT '文件扩展名',
-  is_folder BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否为文件夹',
-  is_deleted BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否已删除(逻辑删除)',
-  uploader_id BIGINT NOT NULL COMMENT '上传者用户ID',
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  updated_at TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  deleted_at TIMESTAMP NULL COMMENT '删除时间',
-  deleted_by BIGINT NULL COMMENT '删除人用户ID',
-  current_version INT NOT NULL DEFAULT 1 COMMENT '当前版本号',
-  preview_url VARCHAR(512) NULL COMMENT '预览URL',
-  FOREIGN KEY (project_id) REFERENCES projects(id),
-  FOREIGN KEY (uploader_id) REFERENCES users(id),
-  FOREIGN KEY (deleted_by) REFERENCES users(id),
-  INDEX idx_hash(file_hash) COMMENT '加快秒传查询',
-  INDEX idx_path(file_path) COMMENT '加快路径查询',
-  INDEX idx_project_path(project_id, file_path) COMMENT '加快文件列表查询',
-  INDEX idx_deleted(is_deleted) COMMENT '加快回收站查询'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='文件信息表';
-```
+- **id**: 主键 ID
+- **project_id**: 所属项目ID
+- **file_name**: 文件名
+- **file_path**: 文件路径
+- **full_path**: 完整路径（用于唯一性校验）
+- **file_hash**: 文件哈希值
+- **file_size**: 文件大小(字节)
+- **mime_type**: 文件MIME类型
+- **extension**: 文件扩展名
+- **is_folder**: 是否为文件夹
+- **is_deleted**: 是否已删除(逻辑删除)
+- **uploader_id**: 上传者用户ID
+- **created_at**: 创建时间
+- **updated_at**: 更新时间
+- **deleted_at**: 删除时间
+- **deleted_by**: 删除人用户ID
+- **current_version**: 当前版本号
+- **preview_url**: 预览URL
 
 #### 文件版本表(file_versions)
-```sql
-CREATE TABLE file_versions (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  file_id BIGINT NOT NULL COMMENT '关联的文件ID',
-  version INT NOT NULL COMMENT '版本号',
-  file_hash VARCHAR(64) NOT NULL COMMENT '此版本的文件哈希值',
-  file_size BIGINT NOT NULL COMMENT '此版本的文件大小',
-  uploader_id BIGINT NOT NULL COMMENT '此版本的上传者ID',
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  comment VARCHAR(255) NULL COMMENT '版本说明',
-  FOREIGN KEY (file_id) REFERENCES files(id),
-  FOREIGN KEY (uploader_id) REFERENCES users(id),
-  UNIQUE KEY (file_id, version) COMMENT '确保版本唯一',
-  INDEX idx_file_version(file_id, version) COMMENT '加快版本查询'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='文件版本表';
-```
+- **id**: 主键 ID
+- **file_id**: 关联的文件ID
+- **version**: 版本号
+- **file_hash**: 此版本的文件哈希值
+- **file_size**: 此版本的文件大小
+- **uploader_id**: 此版本的上传者ID
+- **created_at**: 创建时间
+- **comment**: 版本说明
+- **is_deleted**: 是否已删除（逻辑删除）
 
 #### 文件分享表(file_shares)
-```sql
-CREATE TABLE file_shares (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  file_id BIGINT NOT NULL COMMENT '被分享的文件ID',
-  user_id BIGINT NOT NULL COMMENT '分享创建者ID',
-  share_code VARCHAR(32) NOT NULL UNIQUE COMMENT '分享码',
-  password VARCHAR(32) NULL COMMENT '访问密码',
-  expire_at TIMESTAMP NULL COMMENT '过期时间',
-  download_limit INT DEFAULT 0 COMMENT '下载次数限制，0为无限制',
-  download_count INT DEFAULT 0 COMMENT '已下载次数',
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  FOREIGN KEY (file_id) REFERENCES files(id),
-  FOREIGN KEY (user_id) REFERENCES users(id),
-  INDEX idx_code(share_code) COMMENT '加快分享码查询',
-  INDEX idx_user(user_id) COMMENT '加快用户分享查询'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='文件分享表';
-```
+- **id**: 主键 ID
+- **file_id**: 被分享的文件ID
+- **user_id**: 分享创建者ID
+- **share_code**: 分享码（唯一）
+- **password**: 访问密码
+- **expire_at**: 过期时间
+- **download_limit**: 下载次数限制（0为无限制）
+- **download_count**: 已下载次数
+- **created_at**: 创建时间
+- **is_deleted**: 是否已删除（逻辑删除）
 
 #### 操作日志表(logs)
-```sql
-CREATE TABLE logs (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  user_id BIGINT NOT NULL COMMENT '操作用户ID',
-  group_id BIGINT NOT NULL COMMENT '群组ID',
-  project_id BIGINT NOT NULL COMMENT '项目ID',
-  file_id BIGINT NULL COMMENT '相关文件ID',
-  operation VARCHAR(20) NOT NULL COMMENT '操作类型',
-  ip_address VARCHAR(50) NOT NULL COMMENT '操作IP地址',
-  user_agent VARCHAR(255) NULL COMMENT '用户代理',
-  status INT NOT NULL DEFAULT 200 COMMENT '操作状态码',
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  request_details TEXT NULL COMMENT '请求详情',
-  response_details TEXT NULL COMMENT '响应详情',
-  execution_time INT NULL COMMENT '执行时间(ms)',
-  FOREIGN KEY (user_id) REFERENCES users(id),
-  FOREIGN KEY (group_id) REFERENCES groups(id),
-  FOREIGN KEY (project_id) REFERENCES projects(id),
-  FOREIGN KEY (file_id) REFERENCES files(id),
-  INDEX idx_user_time(user_id, created_at) COMMENT '加快用户日志查询',
-  INDEX idx_project_time(project_id, created_at) COMMENT '加快项目日志查询'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='操作日志表';
-```
+- **id**: 主键 ID
+- **user_id**: 操作用户ID
+- **group_id**: 群组ID
+- **project_id**: 项目ID
+- **file_id**: 相关文件ID
+- **operation**: 操作类型
+- **ip_address**: 操作IP地址
+- **user_agent**: 用户代理
+- **status**: 操作状态码
+- **created_at**: 创建时间
+- **request_details**: 请求详情
+- **response_details**: 响应详情
+- **execution_time**: 执行时间(ms)
 
 #### 存储统计表(storage_stats)
-```sql
-CREATE TABLE storage_stats (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  group_id BIGINT NOT NULL COMMENT '群组ID',
-  project_id BIGINT NOT NULL COMMENT '项目ID',
-  stat_date DATE NOT NULL COMMENT '统计日期',
-  file_count BIGINT NOT NULL DEFAULT 0 COMMENT '文件数量',
-  total_size BIGINT NOT NULL DEFAULT 0 COMMENT '总存储大小',
-  increase_size BIGINT NOT NULL DEFAULT 0 COMMENT '当日增加大小',
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  FOREIGN KEY (group_id) REFERENCES groups(id),
-  FOREIGN KEY (project_id) REFERENCES projects(id),
-  UNIQUE KEY (project_id, stat_date) COMMENT '确保每天每项目只有一条记录',
-  INDEX idx_date(stat_date) COMMENT '加快日期查询'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='存储统计表';
-```
+- **id**: 主键 ID
+- **group_id**: 群组ID
+- **project_id**: 项目ID
+- **stat_date**: 统计日期
+- **file_count**: 文件数量
+- **total_size**: 总存储大小
+- **increase_size**: 当日增加大小
+- **created_at**: 创建时间
 
 ### 2. 索引优化
 - 针对高频查询字段建立索引
@@ -350,10 +274,11 @@ CREATE TABLE storage_stats (
 ## 四、API设计
 
 ### 1. API规范
-- RESTful风格接口设计
+- 只使用GET和POST方法
+- GET请求参数放在URL末尾
 - 统一前缀：`/api/oss`
 - 统一响应格式：`{code, message, data}`
-- 标准HTTP状态码使用
+- 所有删除操作均为逻辑删除
 
 ### 2. 接口详细设计
 
@@ -366,7 +291,7 @@ CREATE TABLE storage_stats (
 | GET | /api/oss/auth/user | 获取用户信息 | 无 | ```{ code: int, message: string, data: { userInfo: object } }``` | 已登录 |
 | POST | /api/oss/auth/refresh | 刷新Token | ```{ refreshToken: string }``` | ```{ code: int, message: string, data: { token: string, refreshToken: string } }``` | 无 |
 | POST | /api/oss/auth/logout | 注销登录 | 无 | ```{ code: int, message: string }``` | 已登录 |
-| PUT | /api/oss/auth/password | 修改密码 | ```{ oldPassword: string, newPassword: string }``` | ```{ code: int, message: string }``` | 已登录 |
+| POST | /api/oss/auth/password | 修改密码 | ```{ oldPassword: string, newPassword: string }``` | ```{ code: int, message: string }``` | 已登录 |
 
 #### 群组管理接口
 
@@ -374,24 +299,24 @@ CREATE TABLE storage_stats (
 |------|------|------|---------|------|----------|
 | POST | /api/oss/group/create | 创建群组 | ```{ name: string, description: string }``` | ```{ code: int, message: string, data: { groupId: int, groupKey: string } }``` | 已登录 |
 | POST | /api/oss/group/join | 加入群组 | ```{ inviteCode: string }``` | ```{ code: int, message: string, data: { groupId: int } }``` | 已登录 |
-| GET | /api/oss/group/list | 获取群组列表 | ```{ page: int, size: int }``` | ```{ code: int, message: string, data: { groups: array, total: int } }``` | 已登录 |
-| GET | /api/oss/group/members | 获取群组成员 | ```{ groupId: int, page: int, size: int }``` | ```{ code: int, message: string, data: { members: array, total: int } }``` | 群组成员 |
+| GET | /api/oss/group/list?page=1&size=10 | 获取群组列表 | 无 | ```{ code: int, message: string, data: { groups: array, total: int } }``` | 已登录 |
+| GET | /api/oss/group/members?groupId=1&page=1&size=10 | 获取群组成员 | 无 | ```{ code: int, message: string, data: { members: array, total: int } }``` | 群组成员 |
 | POST | /api/oss/group/member/manage | 管理成员 | ```{ groupId: int, userId: int, role: string }``` | ```{ code: int, message: string }``` | 群组管理员 |
 | POST | /api/oss/group/invite | 生成邀请码 | ```{ groupId: int, expireTime: int }``` | ```{ code: int, message: string, data: { inviteCode: string, expireAt: string } }``` | 群组管理员 |
-| DELETE | /api/oss/group/member/remove | 移除成员 | ```{ groupId: int, userId: int }``` | ```{ code: int, message: string }``` | 群组管理员 |
-| GET | /api/oss/group/stats | 获取群组统计 | ```{ groupId: int }``` | ```{ code: int, message: string, data: { projectCount: int, fileCount: int, totalSize: int } }``` | 群组成员 |
+| POST | /api/oss/group/member/remove | 移除成员 | ```{ groupId: int, userId: int }``` | ```{ code: int, message: string }``` | 群组管理员 |
+| GET | /api/oss/group/stats?groupId=1 | 获取群组统计 | 无 | ```{ code: int, message: string, data: { projectCount: int, fileCount: int, totalSize: int } }``` | 群组成员 |
 
 #### 项目管理接口
 
 | 方法 | 路径 | 描述 | 请求参数 | 响应 | 权限要求 |
 |------|------|------|---------|------|----------|
 | POST | /api/oss/project/create | 创建项目 | ```{ groupId: int, name: string, description: string }``` | ```{ code: int, message: string, data: { projectId: int, pathPrefix: string } }``` | 群组管理员 |
-| GET | /api/oss/project/list | 获取项目列表 | ```{ groupId: int, page: int, size: int }``` | ```{ code: int, message: string, data: { projects: array, total: int } }``` | 群组成员 |
+| GET | /api/oss/project/list?groupId=1&page=1&size=10 | 获取项目列表 | 无 | ```{ code: int, message: string, data: { projects: array, total: int } }``` | 群组成员 |
 | POST | /api/oss/project/permission | 设置项目权限 | ```{ projectId: int, userId: int, role: string }``` | ```{ code: int, message: string }``` | 项目管理员 |
-| GET | /api/oss/project/users | 获取项目用户 | ```{ projectId: int, page: int, size: int }``` | ```{ code: int, message: string, data: { users: array, total: int } }``` | 项目成员 |
-| PUT | /api/oss/project/update | 更新项目信息 | ```{ projectId: int, name: string, description: string }``` | ```{ code: int, message: string }``` | 项目管理员 |
-| DELETE | /api/oss/project/delete | 删除项目 | ```{ projectId: int }``` | ```{ code: int, message: string }``` | 项目管理员 |
-| GET | /api/oss/project/stats | 项目存储统计 | ```{ projectId: int }``` | ```{ code: int, message: string, data: { fileCount: int, folderCount: int, totalSize: int } }``` | 项目成员 |
+| GET | /api/oss/project/users?projectId=1&page=1&size=10 | 获取项目用户 | 无 | ```{ code: int, message: string, data: { users: array, total: int } }``` | 项目成员 |
+| POST | /api/oss/project/update | 更新项目信息 | ```{ projectId: int, name: string, description: string }``` | ```{ code: int, message: string }``` | 项目管理员 |
+| POST | /api/oss/project/delete | 删除项目(逻辑删除) | ```{ projectId: int }``` | ```{ code: int, message: string }``` | 项目管理员 |
+| GET | /api/oss/project/stats?projectId=1 | 项目存储统计 | 无 | ```{ code: int, message: string, data: { fileCount: int, folderCount: int, totalSize: int } }``` | 项目成员 |
 
 #### 文件操作接口
 
@@ -400,29 +325,29 @@ CREATE TABLE storage_stats (
 | POST | /api/oss/file/instant-check | 秒传检查 | ```{ projectId: int, fileHash: string, fileName: string, filePath: string }``` | ```{ code: int, message: string, data: { canInstant: bool, fileId: int } }``` | 项目上传者 |
 | POST | /api/oss/file/upload-token | 获取上传Token | ```{ projectId: int, fileName: string, filePath: string, fileSize: int, fileHash: string }``` | ```{ code: int, message: string, data: { uploadUrl: string, token: string, partSize: int, partCount: int } }``` | 项目上传者 |
 | POST | /api/oss/file/upload-confirm | 确认上传 | ```{ token: string, parts: [{ partNumber: int, etag: string }] }``` | ```{ code: int, message: string, data: { fileId: int } }``` | 项目上传者 |
-| GET | /api/oss/file/list | 文件列表 | ```{ projectId: int, path: string, page: int, size: int, orderBy: string, order: string }``` | ```{ code: int, message: string, data: { files: array, folders: array, total: int } }``` | 项目成员 |
+| GET | /api/oss/file/list?projectId=1&path=/folder&page=1&size=10&orderBy=name&order=asc | 文件列表 | 无 | ```{ code: int, message: string, data: { files: array, folders: array, total: int } }``` | 项目成员 |
 | POST | /api/oss/file/folder/create | 创建文件夹 | ```{ projectId: int, folderPath: string }``` | ```{ code: int, message: string, data: { folderId: int } }``` | 项目上传者 |
-| GET | /api/oss/file/download-token | 获取下载Token | ```{ fileId: int }``` | ```{ code: int, message: string, data: { downloadUrl: string, fileName: string, expireAt: string } }``` | 项目成员 |
-| DELETE | /api/oss/file/delete | 删除文件 | ```{ fileId: int, permanent: bool }``` | ```{ code: int, message: string }``` | 文件所有者或项目管理员 |
+| GET | /api/oss/file/download-token?fileId=1 | 获取下载Token | 无 | ```{ code: int, message: string, data: { downloadUrl: string, fileName: string, expireAt: string } }``` | 项目成员 |
+| POST | /api/oss/file/delete | 删除文件(逻辑删除) | ```{ fileId: int, permanent: bool }``` | ```{ code: int, message: string }``` | 文件所有者或项目管理员 |
 | POST | /api/oss/file/restore | 恢复已删除文件 | ```{ fileId: int }``` | ```{ code: int, message: string }``` | 文件所有者或项目管理员 |
-| GET | /api/oss/file/trash | 回收站列表 | ```{ projectId: int, page: int, size: int }``` | ```{ code: int, message: string, data: { files: array, total: int } }``` | 项目成员 |
+| GET | /api/oss/file/trash?projectId=1&page=1&size=10 | 回收站列表 | 无 | ```{ code: int, message: string, data: { files: array, total: int } }``` | 项目成员 |
 | POST | /api/oss/file/move | 移动文件 | ```{ fileId: int, targetPath: string }``` | ```{ code: int, message: string }``` | 文件所有者或项目管理员 |
 | POST | /api/oss/file/copy | 复制文件 | ```{ fileId: int, targetPath: string }``` | ```{ code: int, message: string, data: { newFileId: int } }``` | 项目上传者 |
-| GET | /api/oss/file/versions | 获取文件版本 | ```{ fileId: int, page: int, size: int }``` | ```{ code: int, message: string, data: { versions: array, total: int } }``` | 项目成员 |
+| GET | /api/oss/file/versions?fileId=1&page=1&size=10 | 获取文件版本 | 无 | ```{ code: int, message: string, data: { versions: array, total: int } }``` | 项目成员 |
 | POST | /api/oss/file/revert | 回滚到历史版本 | ```{ fileId: int, versionId: int }``` | ```{ code: int, message: string }``` | 文件所有者或项目管理员 |
 | POST | /api/oss/file/share | 分享文件 | ```{ fileId: int, password: string, expireTime: int, downloadLimit: int }``` | ```{ code: int, message: string, data: { shareCode: string, shareUrl: string } }``` | 项目成员 |
-| GET | /api/oss/file/share/list | 获取自己的分享 | ```{ page: int, size: int }``` | ```{ code: int, message: string, data: { shares: array, total: int } }``` | 已登录 |
-| DELETE | /api/oss/file/share/cancel | 取消分享 | ```{ shareId: int }``` | ```{ code: int, message: string }``` | 分享创建者 |
-| GET | /api/oss/file/share/info | 获取分享信息 | ```{ shareCode: string }``` | ```{ code: int, message: string, data: { fileInfo: object, needPassword: bool } }``` | 无 |
+| GET | /api/oss/file/share/list?page=1&size=10 | 获取自己的分享 | 无 | ```{ code: int, message: string, data: { shares: array, total: int } }``` | 已登录 |
+| POST | /api/oss/file/share/cancel | 取消分享(逻辑删除) | ```{ shareId: int }``` | ```{ code: int, message: string }``` | 分享创建者 |
+| GET | /api/oss/file/share/info?shareCode=abc123 | 获取分享信息 | 无 | ```{ code: int, message: string, data: { fileInfo: object, needPassword: bool } }``` | 无 |
 | POST | /api/oss/file/share/access | 访问分享 | ```{ shareCode: string, password: string }``` | ```{ code: int, message: string, data: { downloadUrl: string } }``` | 无 |
 
 #### 日志查询接口
 
 | 方法 | 路径 | 描述 | 请求参数 | 响应 | 权限要求 |
 |------|------|------|---------|------|----------|
-| GET | /api/oss/log/list | 日志列表 | ```{ projectId: int, userId: int, operation: string, startTime: string, endTime: string, page: int, size: int }``` | ```{ code: int, message: string, data: { logs: array, total: int } }``` | 项目管理员 |
-| GET | /api/oss/log/export | 导出日志 | ```{ projectId: int, userId: int, operation: string, startTime: string, endTime: string, format: string }``` | 文件流 | 项目管理员 |
-| GET | /api/oss/log/stats | 操作统计 | ```{ projectId: int, timeRange: string }``` | ```{ code: int, message: string, data: { uploadCount: int, downloadCount: int, deleteCount: int, byUser: array } }``` | 项目管理员 |
+| GET | /api/oss/log/list?projectId=1&userId=2&operation=upload&startTime=2023-01-01&endTime=2023-01-31&page=1&size=10 | 日志列表 | 无 | ```{ code: int, message: string, data: { logs: array, total: int } }``` | 项目管理员 |
+| GET | /api/oss/log/export?projectId=1&userId=2&operation=upload&startTime=2023-01-01&endTime=2023-01-31&format=csv | 导出日志 | 无 | 文件流 | 项目管理员 |
+| GET | /api/oss/log/stats?projectId=1&timeRange=month | 操作统计 | 无 | ```{ code: int, message: string, data: { uploadCount: int, downloadCount: int, deleteCount: int, byUser: array } }``` | 项目管理员 |
 
 ### 3. 文件上传流程接口详解
 

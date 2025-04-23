@@ -5,7 +5,7 @@ all: build
 
 # 构建应用
 build:
-	go build -o bin/oss-backend cmd/server/main.go
+	go build -o bin/oss-backend cmd/main.go
 
 # 运行应用
 run: build
@@ -13,7 +13,7 @@ run: build
 
 # 开发模式运行
 dev:
-	go run cmd/server/main.go
+	go run cmd/main.go
 
 # 清理构建文件
 clean:
@@ -47,29 +47,15 @@ docker-compose-down:
 logs:
 	docker-compose logs -f
 
-# 初始化数据库（通过Docker）
-init-db:
-	docker-compose exec mysql mysql -uroot -ppassword oss_system < docker/mysql/init.sql
-
-# 创建和初始化数据库（不依赖Docker）
-create-db:
-	@echo "检查并创建数据库..."
-ifeq ($(OS),Windows_NT)
-	@powershell -ExecutionPolicy Bypass -File ./scripts/init_db.ps1
-else
-	@chmod +x ./scripts/init_db.sh
-	@./scripts/init_db.sh
-endif
-
 # 生成Swagger文档
 swagger:
 	@echo "生成Swagger文档..."
 ifeq ($(OS),Windows_NT)
 	@go install github.com/swaggo/swag/cmd/swag@latest
-	@swag init -g cmd/server/main.go -o docs/swagger
+	@swag init -g cmd/main.go -o docs/swagger
 else
 	@go install github.com/swaggo/swag/cmd/swag@latest
-	@$(shell go env GOPATH)/bin/swag init -g cmd/server/main.go -o docs/swagger
+	@$(shell go env GOPATH)/bin/swag init -g cmd/main.go -o docs/swagger
 endif
 
 # 帮助信息
@@ -88,4 +74,4 @@ help:
 	@echo "  make logs           - 显示Docker Compose日志"
 	@echo "  make init-db        - 通过Docker初始化数据库"
 	@echo "  make create-db      - 不依赖Docker创建和初始化数据库"
-	@echo "  make swagger        - 生成Swagger文档" 
+	@echo "  make swagger        - 生成Swagger文档"

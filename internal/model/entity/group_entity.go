@@ -1,4 +1,4 @@
-package model
+package entity
 
 import (
 	"time"
@@ -20,7 +20,7 @@ type Group struct {
 	UpdatedAt       time.Time      `json:"updated_at"`
 	Status          int            `gorm:"type:tinyint;default:1;not null" json:"status"` // 1-正常, 2-禁用, 3-锁定
 	DeletedAt       gorm.DeletedAt `gorm:"index" json:"-"`
-	
+
 	Creator User `gorm:"foreignKey:CreatorID" json:"creator"`
 }
 
@@ -31,14 +31,14 @@ func (Group) TableName() string {
 
 // GroupMember 群组成员模型
 type GroupMember struct {
-	ID           uint64    `gorm:"primaryKey;type:bigint unsigned" json:"id"`
-	GroupID      uint64    `gorm:"type:bigint unsigned;not null;index:idx_group_user,priority:1" json:"group_id"`
-	UserID       uint64    `gorm:"type:bigint unsigned;not null;index:idx_group_user,priority:2" json:"user_id"`
-	Role         string    `gorm:"type:varchar(20);not null" json:"role"` // admin(管理员), member(普通成员)
-	JoinedAt     time.Time `gorm:"not null" json:"joined_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID           uint64     `gorm:"primaryKey;type:bigint unsigned" json:"id"`
+	GroupID      uint64     `gorm:"type:bigint unsigned;not null;index:idx_group_user,priority:1" json:"group_id"`
+	UserID       uint64     `gorm:"type:bigint unsigned;not null;index:idx_group_user,priority:2" json:"user_id"`
+	Role         string     `gorm:"type:varchar(20);not null" json:"role"` // admin(管理员), member(普通成员)
+	JoinedAt     time.Time  `gorm:"not null" json:"joined_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 	LastActiveAt *time.Time `json:"last_active_at"`
-	
+
 	Group Group `gorm:"foreignKey:GroupID" json:"group"`
 	User  User  `gorm:"foreignKey:UserID" json:"user"`
 }
@@ -46,4 +46,4 @@ type GroupMember struct {
 // TableName 表名
 func (GroupMember) TableName() string {
 	return "group_members"
-} 
+}
