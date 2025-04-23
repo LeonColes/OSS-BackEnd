@@ -28,6 +28,4 @@ const (
 	RoleGroupAdmin   = "GROUP_ADMIN"   // 群组管理员
 	RoleProjectAdmin = "PROJECT_ADMIN" // 项目管理员
 	RoleMember       = "MEMBER"        // 普通成员
-	RoleUploader     = "UPLOADER"      // 上传者
-	RoleReader       = "READER"        // 只读用户
 )

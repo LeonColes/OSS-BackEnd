@@ -80,20 +80,25 @@ func (c *UserController) Login(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, common.SuccessResponse(result))
 }
 
-// GetUserInfo 获取当前用户信息
-// @Summary 获取当前用户信息
+// GetUserInfo 获取用户信息
+// @Summary 获取用户信息
 // @Description 获取当前登录用户的详细信息
 // @Tags 用户模块
 // @Accept json
 // @Produce json
-// @Param Authorization header string true "Bearer 用户令牌"
+// @Param Authorization header string true "Bearer {{token}}"
 // @Success 200 {object} common.Response{data=dto.UserResponse} "成功"
 // @Failure 401 {object} common.Response "未授权"
 // @Failure 500 {object} common.Response "内部服务器错误"
 // @Router /api/oss/user/info [get]
 func (c *UserController) GetUserInfo(ctx *gin.Context) {
-	// 从上下文中获取用户ID（实际项目中应该从JWT中解析）
-	userID := uint64(1) // 临时写死
+	// 从上下文中获取用户ID
+	userIDValue, exists := ctx.Get("userID")
+	if !exists {
+		ctx.JSON(http.StatusUnauthorized, common.ErrorResponse("未授权"))
+		return
+	}
+	userID := userIDValue.(uint64)
 
 	userInfo, err := c.userService.GetUserInfo(ctx, userID)
 	if err != nil {
@@ -110,7 +115,7 @@ func (c *UserController) GetUserInfo(ctx *gin.Context) {
 // @Tags 用户模块
 // @Accept json
 // @Produce json
-// @Param Authorization header string true "Bearer 用户令牌"
+// @Param Authorization header string true "Bearer {{token}}"
 // @Param request body dto.UserUpdateRequest true "用户信息"
 // @Success 200 {object} common.Response "成功"
 // @Failure 400 {object} common.Response "请求参数错误"
@@ -124,8 +129,13 @@ func (c *UserController) UpdateUserInfo(ctx *gin.Context) {
 		return
 	}
 
-	// 从上下文中获取用户ID（实际项目中应该从JWT中解析）
-	userID := uint64(1) // 临时写死
+	// 从上下文中获取用户ID
+	userIDValue, exists := ctx.Get("userID")
+	if !exists {
+		ctx.JSON(http.StatusUnauthorized, common.ErrorResponse("未授权"))
+		return
+	}
+	userID := userIDValue.(uint64)
 
 	err := c.userService.UpdateUserInfo(ctx, userID, &req)
 	if err != nil {
@@ -142,7 +152,7 @@ func (c *UserController) UpdateUserInfo(ctx *gin.Context) {
 // @Tags 用户模块
 // @Accept json
 // @Produce json
-// @Param Authorization header string true "Bearer 用户令牌"
+// @Param Authorization header string true "Bearer {{token}}"
 // @Param request body dto.UserPasswordUpdateRequest true "密码信息"
 // @Success 200 {object} common.Response "成功"
 // @Failure 400 {object} common.Response "请求参数错误"
@@ -156,8 +166,13 @@ func (c *UserController) UpdatePassword(ctx *gin.Context) {
 		return
 	}
 
-	// 从上下文中获取用户ID（实际项目中应该从JWT中解析）
-	userID := uint64(1) // 临时写死
+	// 从上下文中获取用户ID
+	userIDValue, exists := ctx.Get("userID")
+	if !exists {
+		ctx.JSON(http.StatusUnauthorized, common.ErrorResponse("未授权"))
+		return
+	}
+	userID := userIDValue.(uint64)
 
 	err := c.userService.UpdatePassword(ctx, userID, &req)
 	if err != nil {
@@ -174,7 +189,7 @@ func (c *UserController) UpdatePassword(ctx *gin.Context) {
 // @Tags 用户模块
 // @Accept json
 // @Produce json
-// @Param Authorization header string true "Bearer 用户令牌"
+// @Param Authorization header string true "Bearer {{token}}"
 // @Param email query string false "用户邮箱，模糊查询"
 // @Param name query string false "用户姓名，模糊查询"
 // @Param status query int false "状态：1-正常，2-禁用，3-锁定"
@@ -206,7 +221,7 @@ func (c *UserController) ListUsers(ctx *gin.Context) {
 // @Tags 用户模块
 // @Accept json
 // @Produce json
-// @Param Authorization header string true "Bearer 用户令牌"
+// @Param Authorization header string true "Bearer {{token}}"
 // @Param id path int true "用户ID"
 // @Param status query int true "状态：1-正常，2-禁用，3-锁定" Enums(1, 2, 3)
 // @Success 200 {object} common.Response "成功"
@@ -246,7 +261,7 @@ func (c *UserController) UpdateUserStatus(ctx *gin.Context) {
 // @Tags 用户模块
 // @Accept json
 // @Produce json
-// @Param Authorization header string true "Bearer 用户令牌"
+// @Param Authorization header string true "Bearer {{token}}"
 // @Param id path int true "用户ID"
 // @Success 200 {object} common.Response{data=[]dto.RoleResponse} "成功"
 // @Failure 400 {object} common.Response "请求参数错误"
@@ -277,7 +292,7 @@ func (c *UserController) GetUserRoles(ctx *gin.Context) {
 // @Tags 用户模块
 // @Accept json
 // @Produce json
-// @Param Authorization header string true "Bearer 用户令牌"
+// @Param Authorization header string true "Bearer {{token}}"
 // @Param id path int true "用户ID"
 // @Param roleIds body []uint true "角色ID列表"
 // @Success 200 {object} common.Response "成功"
@@ -316,7 +331,7 @@ func (c *UserController) AssignRoles(ctx *gin.Context) {
 // @Tags 用户模块
 // @Accept json
 // @Produce json
-// @Param Authorization header string true "Bearer 用户令牌"
+// @Param Authorization header string true "Bearer {{token}}"
 // @Param id path int true "用户ID"
 // @Param roleIds body []uint true "角色ID列表"
 // @Success 200 {object} common.Response "成功"

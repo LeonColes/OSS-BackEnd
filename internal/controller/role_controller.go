@@ -29,7 +29,7 @@ func NewRoleController(roleService service.RoleService) *RoleController {
 // @Tags 角色管理
 // @Accept json
 // @Produce json
-// @Param Authorization header string true "Bearer 用户令牌"
+// @Param Authorization header string true "Bearer {{token}}"
 // @Param request body dto.RoleCreateRequest true "角色信息"
 // @Success 200 {object} common.Response "成功"
 // @Failure 400 {object} common.Response "请求参数错误"
@@ -43,8 +43,13 @@ func (c *RoleController) CreateRole(ctx *gin.Context) {
 		return
 	}
 
-	// 获取当前用户ID，实际项目中应该从JWT Token中获取
-	var createdBy uint = 1 // 临时写死，实际项目中需要从Token中获取
+	// 获取当前用户ID
+	userIDValue, exists := ctx.Get("userID")
+	if !exists {
+		ctx.JSON(http.StatusUnauthorized, common.ErrorResponse("未授权"))
+		return
+	}
+	createdBy := uint(userIDValue.(uint64))
 
 	err := c.roleService.CreateRole(ctx, &req, createdBy)
 	if err != nil {
@@ -61,7 +66,7 @@ func (c *RoleController) CreateRole(ctx *gin.Context) {
 // @Tags 角色管理
 // @Accept json
 // @Produce json
-// @Param Authorization header string true "Bearer 用户令牌"
+// @Param Authorization header string true "Bearer {{token}}"
 // @Param request body dto.RoleUpdateRequest true "角色信息"
 // @Success 200 {object} common.Response "成功"
 // @Failure 400 {object} common.Response "请求参数错误"
@@ -75,8 +80,13 @@ func (c *RoleController) UpdateRole(ctx *gin.Context) {
 		return
 	}
 
-	// 获取当前用户ID，实际项目中应该从JWT Token中获取
-	var updatedBy uint = 1 // 临时写死，实际项目中需要从Token中获取
+	// 获取当前用户ID
+	userIDValue, exists := ctx.Get("userID")
+	if !exists {
+		ctx.JSON(http.StatusUnauthorized, common.ErrorResponse("未授权"))
+		return
+	}
+	updatedBy := uint(userIDValue.(uint64))
 
 	err := c.roleService.UpdateRole(ctx, &req, updatedBy)
 	if err != nil {
@@ -93,7 +103,7 @@ func (c *RoleController) UpdateRole(ctx *gin.Context) {
 // @Tags 角色管理
 // @Accept json
 // @Produce json
-// @Param Authorization header string true "Bearer 用户令牌"
+// @Param Authorization header string true "Bearer {{token}}"
 // @Param id path int true "角色ID"
 // @Success 200 {object} common.Response "成功"
 // @Failure 400 {object} common.Response "请求参数错误"
@@ -123,7 +133,7 @@ func (c *RoleController) DeleteRole(ctx *gin.Context) {
 // @Tags 角色管理
 // @Accept json
 // @Produce json
-// @Param Authorization header string true "Bearer 用户令牌"
+// @Param Authorization header string true "Bearer {{token}}"
 // @Param id path int true "角色ID"
 // @Success 200 {object} common.Response{data=dto.RoleResponse} "成功"
 // @Failure 400 {object} common.Response "请求参数错误"
@@ -153,7 +163,7 @@ func (c *RoleController) GetRoleByID(ctx *gin.Context) {
 // @Tags 角色管理
 // @Accept json
 // @Produce json
-// @Param Authorization header string true "Bearer 用户令牌"
+// @Param Authorization header string true "Bearer {{token}}"
 // @Param name query string false "角色名称，模糊查询"
 // @Param status query int false "状态：1-启用，0-禁用" Enums(0, 1)
 // @Param page query int false "页码，默认1"

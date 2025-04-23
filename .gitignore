@@ -59,8 +59,7 @@ __debug_bin
 debug.test
 
 # API文档自动生成的文件
-/docs/swagger/
-/api/swagger/
+docs/swagger
 
 # MinIO存储桶的临时数据
 /minio-data/
