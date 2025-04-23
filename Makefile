@@ -1,4 +1,4 @@
-.PHONY: build run dev clean docker-build docker-compose init-db create-db
+.PHONY: build run dev clean docker-build docker-compose init-db create-db swagger
 
 # 默认目标
 all: build
@@ -61,6 +61,17 @@ else
 	@./scripts/init_db.sh
 endif
 
+# 生成Swagger文档
+swagger:
+	@echo "生成Swagger文档..."
+ifeq ($(OS),Windows_NT)
+	@go install github.com/swaggo/swag/cmd/swag@latest
+	@swag init -g cmd/server/main.go -o docs/swagger
+else
+	@go install github.com/swaggo/swag/cmd/swag@latest
+	@$(shell go env GOPATH)/bin/swag init -g cmd/server/main.go -o docs/swagger
+endif
+
 # 帮助信息
 help:
 	@echo "可用命令:"
@@ -76,4 +87,5 @@ help:
 	@echo "  make docker-compose-down - 停止Docker Compose环境"
 	@echo "  make logs           - 显示Docker Compose日志"
 	@echo "  make init-db        - 通过Docker初始化数据库"
-	@echo "  make create-db      - 不依赖Docker创建和初始化数据库" 
+	@echo "  make create-db      - 不依赖Docker创建和初始化数据库"
+	@echo "  make swagger        - 生成Swagger文档" 

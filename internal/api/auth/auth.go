@@ -20,6 +20,17 @@ func NewController(authService service.AuthService) *Controller {
 }
 
 // Register 用户注册
+// @Summary 用户注册
+// @Description 注册新用户并返回用户ID
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param request body service.RegisterRequest true "注册信息"
+// @Success 201 {object} map[string]interface{} "注册成功"
+// @Failure 400 {object} map[string]interface{} "请求参数错误"
+// @Failure 409 {object} map[string]interface{} "用户已存在"
+// @Failure 500 {object} map[string]interface{} "服务器内部错误"
+// @Router /auth/register [post]
 func (c *Controller) Register(ctx *gin.Context) {
 	var req service.RegisterRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
@@ -60,6 +71,17 @@ func (c *Controller) Register(ctx *gin.Context) {
 }
 
 // Login 用户登录
+// @Summary 用户登录
+// @Description 用户登录并获取认证令牌
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param request body service.LoginRequest true "登录信息"
+// @Success 200 {object} map[string]interface{} "登录成功"
+// @Failure 400 {object} map[string]interface{} "请求参数错误"
+// @Failure 401 {object} map[string]interface{} "邮箱或密码不正确"
+// @Failure 500 {object} map[string]interface{} "服务器内部错误"
+// @Router /auth/login [post]
 func (c *Controller) Login(ctx *gin.Context) {
 	var req service.LoginRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
@@ -105,6 +127,17 @@ func (c *Controller) Login(ctx *gin.Context) {
 }
 
 // RefreshToken 刷新访问令牌
+// @Summary 刷新访问令牌
+// @Description 使用刷新令牌获取新的访问令牌
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param request body map[string]string true "刷新令牌请求"
+// @Success 200 {object} map[string]interface{} "刷新成功"
+// @Failure 400 {object} map[string]interface{} "请求参数错误"
+// @Failure 401 {object} map[string]interface{} "无效的刷新令牌或已过期"
+// @Failure 500 {object} map[string]interface{} "服务器内部错误"
+// @Router /auth/refresh [post]
 func (c *Controller) RefreshToken(ctx *gin.Context) {
 	// 获取请求参数
 	var req struct {
@@ -151,6 +184,15 @@ func (c *Controller) RefreshToken(ctx *gin.Context) {
 }
 
 // GetUserInfo 获取当前用户信息
+// @Summary 获取用户信息
+// @Description 获取当前登录用户的信息
+// @Tags user
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} map[string]interface{} "获取成功"
+// @Failure 401 {object} map[string]interface{} "未授权：用户未登录"
+// @Failure 500 {object} map[string]interface{} "服务器内部错误"
+// @Router /user/info [get]
 func (c *Controller) GetUserInfo(ctx *gin.Context) {
 	// 从上下文获取用户ID
 	userID, exists := ctx.Get("user_id")
@@ -182,6 +224,18 @@ func (c *Controller) GetUserInfo(ctx *gin.Context) {
 }
 
 // ChangePassword 修改密码
+// @Summary 修改用户密码
+// @Description 修改当前登录用户的密码
+// @Tags user
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body map[string]string true "密码信息"
+// @Success 200 {object} map[string]interface{} "修改成功"
+// @Failure 400 {object} map[string]interface{} "请求参数错误或原密码不正确"
+// @Failure 401 {object} map[string]interface{} "未授权：用户未登录"
+// @Failure 500 {object} map[string]interface{} "服务器内部错误"
+// @Router /user/password [put]
 func (c *Controller) ChangePassword(ctx *gin.Context) {
 	// 获取请求参数
 	var req struct {
@@ -235,6 +289,13 @@ func (c *Controller) ChangePassword(ctx *gin.Context) {
 }
 
 // Logout 用户登出
+// @Summary 用户登出
+// @Description 用户登出，使当前令牌失效
+// @Tags user
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} map[string]interface{} "登出成功"
+// @Router /user/logout [post]
 func (c *Controller) Logout(ctx *gin.Context) {
 	// 实际上服务器端不需要做任何操作，JWT令牌是无状态的
 	// 客户端只需要删除本地存储的令牌即可

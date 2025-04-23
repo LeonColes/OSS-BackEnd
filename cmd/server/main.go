@@ -20,6 +20,14 @@ import (
 	"gorm.io/gorm/logger"
 )
 
+// @title OSS-Backend API
+// @version 1.0
+// @description 对象存储系统后端API
+// @host localhost:8080
+// @BasePath /api/oss
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
 func main() {
 	// 加载配置
 	cfg, err := config.Load()

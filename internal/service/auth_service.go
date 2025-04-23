@@ -21,23 +21,23 @@ var (
 
 // TokenResponse 令牌响应结构
 type TokenResponse struct {
-	AccessToken  string    `json:"access_token"`
-	RefreshToken string    `json:"refresh_token"`
-	ExpiresAt    time.Time `json:"expires_at"`
-	TokenType    string    `json:"token_type"`
+	AccessToken  string    `json:"access_token" example:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."`
+	RefreshToken string    `json:"refresh_token" example:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."`
+	ExpiresAt    time.Time `json:"expires_at" example:"2023-01-01T00:00:00Z"`
+	TokenType    string    `json:"token_type" example:"Bearer"`
 }
 
 // RegisterRequest 注册请求结构
 type RegisterRequest struct {
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=6"`
-	Name     string `json:"name" binding:"required"`
+	Email    string `json:"email" binding:"required,email" example:"user@example.com"`
+	Password string `json:"password" binding:"required,min=6" example:"password123"`
+	Name     string `json:"name" binding:"required" example:"张三"`
 }
 
 // LoginRequest 登录请求结构
 type LoginRequest struct {
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required"`
+	Email    string `json:"email" binding:"required,email" example:"admin@example.com"`
+	Password string `json:"password" binding:"required" example:"admin123"`
 }
 
 // AuthService 认证服务接口
