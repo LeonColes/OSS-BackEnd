@@ -32,6 +32,8 @@ func SetupRouter(r *gin.Engine, db interface{}) {
 
 	// 创建仓库
 	userRepo := repository.NewUserRepository(gormDB)
+	roleRepo := repository.NewRoleRepository(gormDB)
+	groupRepo := repository.NewGroupRepository(gormDB)
 
 	// 创建角色中间件
 	roleMiddleware := middleware.NewRoleAuthMiddleware(userRepo)
@@ -44,6 +46,9 @@ func SetupRouter(r *gin.Engine, db interface{}) {
 
 	// 注册用户相关路由
 	registerUserRoutes(apiGroup, gormDB, jwtMiddleware, roleMiddleware)
+
+	// 注册群组相关路由
+	registerGroupRoutes(apiGroup, userRepo, roleRepo, groupRepo, jwtMiddleware)
 
 	// 注册项目相关路由 (空壳)
 	registerProjectRoutes(apiGroup, jwtMiddleware)
@@ -115,6 +120,33 @@ func registerUserRoutes(apiGroup *gin.RouterGroup, db *gorm.DB, jwtMiddleware *m
 				adminGroup.POST("/roles/:id/remove", userController.RemoveRoles)
 			}
 		}
+	}
+}
+
+// 注册群组相关路由
+func registerGroupRoutes(apiGroup *gin.RouterGroup, userRepo repository.UserRepository, roleRepo repository.RoleRepository, groupRepo repository.GroupRepository, jwtMiddleware *middleware.JWTAuthMiddleware) {
+	// 创建依赖
+	groupService := service.NewGroupService(groupRepo, userRepo, roleRepo)
+	groupController := controller.NewGroupController(groupService)
+
+	// 群组相关路由
+	groupGroup := apiGroup.Group("/group")
+	groupGroup.Use(jwtMiddleware.AuthMiddleware()) // 所有群组操作都需要登录
+	{
+		// 群组管理
+		groupGroup.POST("/create", groupController.CreateGroup)
+		groupGroup.POST("/update", groupController.UpdateGroup)
+		groupGroup.GET("/detail/:id", groupController.GetGroupByID)
+		groupGroup.GET("/list", groupController.ListGroups)
+		groupGroup.GET("/user", groupController.GetUserGroups)
+		groupGroup.POST("/join", groupController.JoinGroup)
+		groupGroup.POST("/invite", groupController.GenerateInviteCode)
+
+		// 成员管理
+		groupGroup.GET("/member/add/:id", groupController.AddMember)
+		groupGroup.POST("/member/role/:id", groupController.UpdateMemberRole)
+		groupGroup.GET("/member/remove/:id", groupController.RemoveMember)
+		groupGroup.GET("/member/list/:id", groupController.ListMembers)
 	}
 }
 
