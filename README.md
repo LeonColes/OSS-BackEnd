@@ -146,148 +146,55 @@ scp configs/config.yaml user@server:/path/to/app/configs/
 cd /path/to/app && ./oss-backend
 ```
 
-## API文档
+## 项目文档
 
-API文档使用Swagger生成，可通过以下方式访问:
+项目提供了全面的文档，位于`docs/`目录下：
+
+1. **[架构设计文档](docs/architecture.md)**
+   - 系统概述
+   - 架构设计原则
+   - 整体架构
+   - 技术栈选型
+   - 核心模块设计
+   - 存储设计
+   - 认证与授权设计（含角色与权限管理）
+   - 部署架构
+   - 性能与扩展性
+   - 安全设计
+
+2. **[API文档](docs/api.md)**
+   - 接口规范
+   - 角色权限列表
+   - 核心接口说明
+   - Swagger使用指南
+
+3. **[贡献指南](docs/contributing.md)**
+   - 行为准则
+   - 开发流程
+   - 代码风格
+   - 提交规范
+   - Pull Request流程
+   - 项目结构
+   - 开发环境设置
+
+### API文档
+
+#### Swagger接口文档
+
+开发环境下，可通过浏览器访问Swagger UI:
 
 ```
 http://localhost:8080/swagger/index.html
 ```
 
-### Swagger目录文件说明
+#### Apifox导入指南
 
-Swagger文档在 `docs/swagger/` 目录下，包含以下重要文件：
+可以轻松导入Swagger文档到Apifox进行API测试：
 
-- `swagger.json` - OpenAPI规范的JSON格式文档，用于工具导入
-- `swagger.yaml` - OpenAPI规范的YAML格式文档，与JSON内容一致但格式更易读
-- `docs.go` - Go代码形式的Swagger文档，由swag工具自动生成
-
-生成或更新Swagger文档：
-
-```bash
-# Linux/Mac
-make swagger
-
-# Windows
-swag init -g cmd/server/main.go -o docs/swagger
-```
-
-### Apifox导入指南
-
-[Apifox](https://www.apifox.cn/) 是一个优秀的API设计、开发、测试一体化工具，可以轻松导入Swagger文档。
-
-#### 前提条件
-
-1. 已安装 [Apifox](https://www.apifox.cn/download/)
-2. OSS-Backend服务已成功运行
-
-#### 方法一：通过Swagger JSON文件导入
-
-1. 确保已经生成了Swagger文档:
-   ```bash
-   make swagger
-   ```
-
-2. 导入步骤：
-   - 打开Apifox
-   - 点击 "导入/新建" > "导入数据" > "OpenAPI (Swagger)"
-   - 选择 `docs/swagger/swagger.json` 文件导入
-   - 完成导入设置，点击"确定"
-
-#### 方法二：通过Swagger URL导入
-
-1. 确保OSS-Backend服务正在运行:
-   ```bash
-   make dev
-   ```
-
-2. 导入步骤：
-   - 打开Apifox
-   - 点击 "导入/新建" > "导入数据" > "OpenAPI (Swagger)"
-   - 选择"从URL导入"，填入：`http://localhost:8080/swagger-json/swagger.json`
-   - 完成导入设置，点击"确定"
-
-#### 方法三：解决导入问题
-
-如果导入URL时遇到 `404 Not Found` 错误，请尝试以下步骤：
-
-1. 确保服务器正在运行：
-   ```bash
-   make dev
-   ```
-
-2. 在浏览器中访问 `http://localhost:8080/swagger-json/swagger.json` 确认文件是否可访问
-
-3. 如果文件不可访问，重新生成Swagger文档：
-   ```bash
-   make swagger
-   # 或者在Windows系统上：
-   swag init -g cmd/server/main.go -o docs/swagger
-   ```
-
-4. 重启服务器后再次尝试导入
-
-5. 如果仍有问题，可以下载swagger.json文件，然后在Apifox中选择"导入本地文件"
-
-#### 系统默认账户
-
-导入完成后，你可以使用以下账户进行API测试：
-
-- 管理员账户:
-  - 邮箱: admin@example.com
-  - 密码: admin123
-
-#### API认证说明
-
-在调用需要认证的API时，请先执行登录接口，然后将获取到的`access_token`添加到其他API的请求头中：
-
-```
-Authorization: Bearer {access_token}
-```
-
-在Apifox中，你可以设置全局请求头或环境变量来自动添加这个认证信息。
-
-#### 多环境配置
-
-Swagger文档定义了多个环境，可在Apifox中轻松切换：
-
-1. **本地开发环境**：http://localhost:8080/api/oss
-2. **测试环境**：http://test-api.example.com/api/oss   // 待开放
-3. **生产环境**：http://api.example.com/api/OSS        // 待开放
-
-导入Apifox后，可以根据需要修改这些环境配置的URL。
-
-## 更多文档
-[产品设计文档](./Product%20Design.md)
-[后端设计文档](./BackEnd%20Design.md)
-[角色设计文档](./Role%20Design.md)
-
-## 角色管理说明
-
-### 角色权限
-
-本系统采用基于角色的访问控制（RBAC）模型，并通过Casbin实现动态权限管理。系统中有三种预定义角色：
-
-1. **ADMIN（系统管理员）** - 拥有全局权限
-2. **GROUP_ADMIN（群组管理员）** - 拥有群组级别的管理权限
-3. **MEMBER（普通成员）** - 拥有基本使用权限
-
-### 自定义角色
-
-系统允许 **ADMIN** 和 **GROUP_ADMIN** 角色创建和管理自定义角色：
-
-- 自定义角色可以设置名称、描述和唯一编码
-- 创建角色后可以为用户分配相应角色
-- 每个角色可以关联特定的权限策略
-
-### 角色管理接口权限
-
-角色管理相关API接口需要ADMIN或GROUP_ADMIN权限才能访问：
-
-- 创建角色: `/api/oss/role/create`
-- 更新角色: `/api/oss/role/update`
-- 删除角色: `/api/oss/role/delete/{id}`
-- 角色详情: `/api/oss/role/detail/{id}`
-- 角色列表: `/api/oss/role/list`
-
-详细的角色和权限设计请参阅 [权限设计文档](./permissions.md)。
+1. 确保OSS-Backend服务正在运行
+2. 打开Apifox
+3. 点击 "导入/新建" > "导入数据" > "OpenAPI (Swagger)"
+4. 选择导入方式：
+   - 通过URL: `http://localhost:8080/swagger/doc.json`
+   - 或通过文件: `docs/swagger/swagger.json`
+5. 完成导入设置，点击"确定"
