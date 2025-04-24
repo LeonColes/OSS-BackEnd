@@ -29,6 +29,19 @@ type ProjectRepository interface {
 
 	// 检查用户是否拥有项目权限
 	CheckUserProjectRole(ctx context.Context, userID, projectID uint64, roles []string) (bool, error)
+
+	// 项目成员管理
+	AddMember(ctx context.Context, member *entity.ProjectMember) error
+	RemoveMember(ctx context.Context, projectID, userID uint64) error
+	UpdateMemberRole(ctx context.Context, projectID, userID uint64, role string) error
+	GetMembers(ctx context.Context, projectID uint64) ([]*entity.ProjectMember, error)
+
+	// 检查用户是否在项目中及其角色
+	CheckUserInProject(ctx context.Context, projectID, userID uint64) (bool, string, error)
+
+	// 项目查询
+	GetByName(ctx context.Context, name string) (*entity.Project, error)
+	GetPublicProjects(ctx context.Context, page, pageSize int) ([]*entity.Project, int64, error)
 }
 
 // projectRepository 项目仓库实现
@@ -261,4 +274,82 @@ func (r *projectRepository) CheckUserProjectRole(ctx context.Context, userID, pr
 
 	err := query.Count(&count).Error
 	return count > 0, err
+}
+
+// AddMember 添加项目成员
+func (r *projectRepository) AddMember(ctx context.Context, member *entity.ProjectMember) error {
+	return r.db.WithContext(ctx).Create(member).Error
+}
+
+// RemoveMember 移除项目成员
+func (r *projectRepository) RemoveMember(ctx context.Context, projectID, userID uint64) error {
+	return r.db.WithContext(ctx).Where("project_id = ? AND user_id = ?", projectID, userID).
+		Delete(&entity.ProjectMember{}).Error
+}
+
+// UpdateMemberRole 更新成员角色
+func (r *projectRepository) UpdateMemberRole(ctx context.Context, projectID, userID uint64, role string) error {
+	return r.db.WithContext(ctx).Model(&entity.ProjectMember{}).
+		Where("project_id = ? AND user_id = ?", projectID, userID).
+		Update("role", role).Error
+}
+
+// GetMembers 获取项目成员列表
+func (r *projectRepository) GetMembers(ctx context.Context, projectID uint64) ([]*entity.ProjectMember, error) {
+	var members []*entity.ProjectMember
+	err := r.db.WithContext(ctx).Where("project_id = ?", projectID).Find(&members).Error
+	if err != nil {
+		return nil, err
+	}
+	return members, nil
+}
+
+// CheckUserInProject 检查用户是否在项目中及其角色
+func (r *projectRepository) CheckUserInProject(ctx context.Context, projectID, userID uint64) (bool, string, error) {
+	var member entity.ProjectMember
+
+	err := r.db.WithContext(ctx).Where("project_id = ? AND user_id = ?", projectID, userID).
+		First(&member).Error
+
+	if err != nil {
+		if err.Error() == "record not found" {
+			return false, "", nil
+		}
+		return false, "", err
+	}
+
+	return true, member.Role, nil
+}
+
+// GetByName 根据名称获取项目
+func (r *projectRepository) GetByName(ctx context.Context, name string) (*entity.Project, error) {
+	var project entity.Project
+	err := r.db.WithContext(ctx).Where("name = ? AND is_deleted = ?", name, false).First(&project).Error
+	if err != nil {
+		return nil, err
+	}
+	return &project, nil
+}
+
+// GetPublicProjects 获取公开项目列表
+func (r *projectRepository) GetPublicProjects(ctx context.Context, page, pageSize int) ([]*entity.Project, int64, error) {
+	var projects []*entity.Project
+	var count int64
+
+	query := r.db.WithContext(ctx).Where("is_public = ? AND is_deleted = ?", true, false)
+
+	// 计算总数
+	err := query.Model(&entity.Project{}).Count(&count).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// 分页查询
+	offset := (page - 1) * pageSize
+	err = query.Offset(offset).Limit(pageSize).Find(&projects).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return projects, count, nil
 }

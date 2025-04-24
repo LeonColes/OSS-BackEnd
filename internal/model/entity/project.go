@@ -49,4 +49,22 @@ func (Permission) TableName() string {
 	return "permissions"
 }
 
+// ProjectMember 项目成员模型
+type ProjectMember struct {
+	ID        uint64    `gorm:"primaryKey;type:bigint unsigned" json:"id"`
+	ProjectID uint64    `gorm:"type:bigint unsigned;not null;index:idx_project_member,priority:1" json:"project_id"`
+	UserID    uint64    `gorm:"type:bigint unsigned;not null;index:idx_project_member,priority:2" json:"user_id"`
+	Role      string    `gorm:"type:varchar(20);not null" json:"role"` // admin, editor, viewer
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	Project Project `gorm:"foreignKey:ProjectID" json:"project"`
+	User    User    `gorm:"foreignKey:UserID" json:"user"`
+}
+
+// TableName 表名
+func (ProjectMember) TableName() string {
+	return "project_members"
+}
+
 // 角色常量在 roles.go 中定义

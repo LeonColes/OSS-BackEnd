@@ -61,6 +61,10 @@ type AuthService interface {
 	// 权限检查辅助方法
 	CanUserAccessResource(ctx context.Context, userID uint64, resourceType, action, domain string) (bool, error)
 	IsUserInRole(ctx context.Context, userID uint64, roleCode string) (bool, error)
+
+	// 项目权限检查方法
+	CheckUserProjectPermission(ctx context.Context, userID, projectID uint64, allowedRoles []string) (bool, error)
+	IsProjectAdmin(ctx context.Context, userID, projectID uint64) (bool, error)
 }
 
 // authService 认证授权服务实现
@@ -439,4 +443,122 @@ func (s *authService) UpdateRoleFromDTO(ctx context.Context, req *dto.RoleUpdate
 	}
 
 	return s.roleRepo.Update(ctx, role)
+}
+
+// CheckUserProjectPermission 检查用户是否拥有项目权限
+func (s *authService) CheckUserProjectPermission(ctx context.Context, userID, projectID uint64, allowedRoles []string) (bool, error) {
+	// 先检查是否为系统管理员
+	isAdmin, err := s.IsUserInRole(ctx, userID, "ADMIN")
+	if err != nil {
+		return false, err
+	}
+	if isAdmin {
+		return true, nil // 系统管理员拥有所有权限
+	}
+
+	// 查询项目信息以获取所属群组
+	var project entity.Project
+	err = s.db.First(&project, projectID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, errors.New("项目不存在")
+		}
+		return false, err
+	}
+
+	// 查询用户在项目中的角色
+	var permission entity.Permission
+	err = s.db.Where("project_id = ? AND user_id = ?", projectID, userID).First(&permission).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// 用户在项目中没有显式权限，检查用户在群组中的角色
+			var groupMember entity.GroupMember
+			err = s.db.Where("group_id = ? AND user_id = ?", project.GroupID, userID).First(&groupMember).Error
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return false, nil // 用户不是群组成员
+				}
+				return false, err
+			}
+
+			// 如果用户是群组管理员，检查是否在允许的角色中
+			if groupMember.Role == "admin" {
+				for _, role := range allowedRoles {
+					if role == "admin" {
+						return true, nil
+					}
+				}
+			}
+
+			// 如果用户只是普通成员，检查是否在允许的角色中
+			if groupMember.Role == "member" {
+				for _, role := range allowedRoles {
+					if role == "viewer" || role == "member" {
+						return true, nil
+					}
+				}
+			}
+
+			return false, nil
+		}
+		return false, err
+	}
+
+	// 检查用户的项目角色是否在允许的角色列表中
+	for _, role := range allowedRoles {
+		if permission.Role == role {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// IsProjectAdmin 检查用户是否为项目管理员
+func (s *authService) IsProjectAdmin(ctx context.Context, userID, projectID uint64) (bool, error) {
+	// 先检查是否为系统管理员
+	isAdmin, err := s.IsUserInRole(ctx, userID, "ADMIN")
+	if err != nil {
+		return false, err
+	}
+	if isAdmin {
+		return true, nil // 系统管理员拥有所有项目的管理权限
+	}
+
+	// 查询项目信息以获取所属群组和创建者
+	var project entity.Project
+	err = s.db.First(&project, projectID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, errors.New("项目不存在")
+		}
+		return false, err
+	}
+
+	// 检查用户是否是项目创建者
+	if project.CreatorID == userID {
+		return true, nil
+	}
+
+	// 查询用户在项目中的角色
+	var permission entity.Permission
+	err = s.db.Where("project_id = ? AND user_id = ?", projectID, userID).First(&permission).Error
+	if err == nil {
+		// 检查用户是否有admin角色
+		if permission.Role == "admin" {
+			return true, nil
+		}
+	}
+
+	// 查询用户在群组中的角色
+	var groupMember entity.GroupMember
+	err = s.db.Where("group_id = ? AND user_id = ?", project.GroupID, userID).First(&groupMember).Error
+	if err == nil {
+		// 检查用户是否是群组管理员
+		if groupMember.Role == "admin" {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }

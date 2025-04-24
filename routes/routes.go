@@ -5,6 +5,7 @@ import (
 
 	"github.com/casbin/casbin/v2"
 	"github.com/gin-gonic/gin"
+	"github.com/spf13/viper"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"gorm.io/gorm"
@@ -13,6 +14,7 @@ import (
 	"oss-backend/internal/middleware"
 	"oss-backend/internal/repository"
 	"oss-backend/internal/service"
+	"oss-backend/pkg/minio"
 )
 
 // SetupRouter 设置路由
@@ -68,8 +70,8 @@ func SetupRouter(r *gin.Engine, db interface{}) {
 	// 注册项目相关路由
 	registerProjectRoutes(apiGroup, gormDB, jwtMiddleware, authSvc, authMiddleware)
 
-	// 注册文件相关路由 (空壳)
-	registerFileRoutes(apiGroup, jwtMiddleware, authMiddleware)
+	// 注册文件相关路由
+	registerFileRoutes(apiGroup, gormDB, jwtMiddleware, authMiddleware, authSvc)
 }
 
 // 注册角色相关路由
@@ -229,24 +231,72 @@ func registerProjectRoutes(
 	}
 }
 
-// 注册文件相关路由 (空壳)
+// 注册文件相关路由
 func registerFileRoutes(
 	apiGroup *gin.RouterGroup,
+	db *gorm.DB,
 	jwtMiddleware *middleware.JWTAuthMiddleware,
 	authMiddleware *middleware.AuthMiddleware,
+	authService service.AuthService,
 ) {
+	// 创建仓库
+	fileRepo := repository.NewFileRepository(db)
+	projectRepo := repository.NewProjectRepository(db)
+
+	// 从配置获取MinIO参数
+	minioConfig := minio.Config{
+		Endpoint:  viper.GetString("minio.endpoint"),
+		AccessKey: viper.GetString("minio.access_key"),
+		SecretKey: viper.GetString("minio.secret_key"),
+		UseSSL:    viper.GetBool("minio.use_ssl"),
+	}
+
+	// 如果配置为空，使用默认值
+	if minioConfig.Endpoint == "" {
+		minioConfig.Endpoint = "localhost:9000"
+		minioConfig.AccessKey = "minioadmin"
+		minioConfig.SecretKey = "minioadmin"
+		minioConfig.UseSSL = false
+	}
+
+	// 创建MinIO客户端
+	minioClient, err := minio.NewClient(minioConfig)
+	if err != nil {
+		panic("初始化MinIO客户端失败: " + err.Error())
+	}
+
+	// 创建文件服务
+	fileService := service.NewFileService(fileRepo, projectRepo, minioClient, authService, db)
+
+	// 创建文件控制器
+	fileController := controller.NewFileController(fileService, nil, authService)
+
 	// 定义文件中间件辅助函数
 	getFileGroupID := func(c *gin.Context) (string, error) {
 		return middleware.GetGroupIDFromParam(c)
 	}
 
+	// 文件相关路由
 	fileGroup := apiGroup.Group("/file")
 	fileGroup.Use(jwtMiddleware.AuthMiddleware())
 	{
-		// 文件相关路由 (空壳)
-		fileGroup.POST("/upload", authMiddleware.Authorize("files", "create", getFileGroupID), func(c *gin.Context) {})
-		fileGroup.GET("/download/:id", authMiddleware.Authorize("files", "read", getFileGroupID), func(c *gin.Context) {})
-		fileGroup.GET("/list", authMiddleware.Authorize("files", "read", getFileGroupID), func(c *gin.Context) {})
-		fileGroup.GET("/delete/:id", authMiddleware.Authorize("files", "delete", getFileGroupID), func(c *gin.Context) {})
+		// 文件管理路由
+		fileGroup.POST("/upload", authMiddleware.Authorize("files", "create", getFileGroupID), fileController.Upload)
+		fileGroup.GET("/download/:id", authMiddleware.Authorize("files", "read", getFileGroupID), fileController.Download)
+		fileGroup.GET("/list", authMiddleware.Authorize("files", "read", getFileGroupID), fileController.ListFiles)
+		fileGroup.POST("/folder", authMiddleware.Authorize("files", "create", getFileGroupID), fileController.CreateFolder)
+		fileGroup.GET("/delete/:id", authMiddleware.Authorize("files", "delete", getFileGroupID), fileController.DeleteFile)
+		fileGroup.GET("/versions/:id", authMiddleware.Authorize("files", "read", getFileGroupID), fileController.GetFileVersions)
+	}
+
+	// 文件分享相关路由
+	shareGroup := apiGroup.Group("/share")
+	{
+		// 创建分享需要认证
+		shareGroup.POST("", jwtMiddleware.AuthMiddleware(), fileController.CreateShare)
+
+		// 获取分享信息与下载分享文件不需要认证
+		shareGroup.GET("/:code", fileController.GetShareInfo)
+		shareGroup.POST("/download", fileController.DownloadSharedFile)
 	}
 }

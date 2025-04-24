@@ -193,47 +193,333 @@ GET /api/oss/v1/users/{id}
 
 权限要求: `ADMIN` 或 当前用户
 
-### 组管理
+### 群组管理
 
-#### 创建组
+#### 创建群组
 
 ```
-POST /api/oss/v1/groups
+POST /api/oss/group/create
 ```
 
 请求体:
 ```json
 {
-  "name": "测试组",
-  "description": "这是一个测试组"
+  "name": "测试群组",
+  "description": "这是一个测试群组",
+  "group_key": "test_group"  // 仅允许字母和数字，作为MinIO桶名
+}
+```
+
+响应:
+```json
+{
+  "code": 0,
+  "message": "成功",
+  "data": null
 }
 ```
 
 权限要求: 任何已登录用户
 
-#### 获取组列表
+#### 更新群组信息
 
 ```
-GET /api/oss/v1/groups
+POST /api/oss/group/update
+```
+
+请求体:
+```json
+{
+  "id": 1,
+  "name": "更新后的群组名称",
+  "description": "更新后的群组描述",
+  "status": 1  // 可选，1-正常, 2-禁用, 3-锁定
+}
+```
+
+响应:
+```json
+{
+  "code": 0,
+  "message": "成功",
+  "data": null
+}
+```
+
+权限要求: 群组管理员 (需要有群组管理员权限)
+
+#### 获取群组详情
+
+```
+GET /api/oss/group/detail/{id}
+```
+
+响应:
+```json
+{
+  "code": 0,
+  "message": "成功",
+  "data": {
+    "id": 1,
+    "name": "测试群组",
+    "description": "这是一个测试群组",
+    "group_key": "test_group",
+    "invite_code": "ABC123",  // 仅群组管理员可见
+    "storage_quota": 0,  // 存储配额，0表示无限制
+    "storage_used": 1024,  // 已使用的存储空间（字节）
+    "member_count": 10,  // 成员数量
+    "project_count": 5,  // 项目数量
+    "status": 1,  // 1-正常, 2-禁用, 3-锁定
+    "creator_id": 1,
+    "creator_name": "创建者",
+    "created_at": "2023-06-01T12:00:00Z",
+    "user_role": "admin"  // 当前用户在群组中的角色
+  }
+}
+```
+
+权限要求: 群组成员
+
+#### 获取群组列表
+
+```
+GET /api/oss/group/list?name=&status=1&page=1&size=10
+```
+
+参数:
+- `name`: 群组名称（模糊查询，可选）
+- `status`: 状态（1-正常, 2-禁用, 3-锁定，可选）
+- `page`: 页码，默认1
+- `size`: 每页数量，默认10
+
+响应:
+```json
+{
+  "code": 0,
+  "message": "成功",
+  "data": {
+    "total": 100,
+    "items": [
+      {
+        "id": 1,
+        "name": "测试群组1",
+        "description": "这是测试群组1",
+        "group_key": "test_group_1",
+        "storage_quota": 0,
+        "storage_used": 1024,
+        "member_count": 10,
+        "project_count": 5,
+        "status": 1,
+        "creator_id": 1,
+        "creator_name": "创建者",
+        "created_at": "2023-06-01T12:00:00Z",
+        "user_role": "admin"
+      },
+      // ... 更多群组
+    ]
+  }
+}
 ```
 
 权限要求: 任何已登录用户
 
-#### 添加组成员
+#### 获取用户所在的群组
 
 ```
-POST /api/oss/v1/groups/{id}/members
+GET /api/oss/group/user
 ```
+
+响应:
+```json
+{
+  "code": 0,
+  "message": "成功",
+  "data": [
+    {
+      "id": 1,
+      "name": "测试群组1",
+      "description": "这是测试群组1",
+      "group_key": "test_group_1",
+      "storage_quota": 0,
+      "storage_used": 1024,
+      "member_count": 10,
+      "project_count": 5,
+      "status": 1,
+      "creator_id": 1,
+      "creator_name": "创建者",
+      "created_at": "2023-06-01T12:00:00Z",
+      "user_role": "admin"
+    },
+    // ... 更多群组
+  ]
+}
+```
+
+权限要求: 任何已登录用户
+
+#### 加入群组
+
+```
+POST /api/oss/group/join
+```
+
+请求体:
+```json
+{
+  "invite_code": "ABC123"
+}
+```
+
+响应:
+```json
+{
+  "code": 0,
+  "message": "成功",
+  "data": null
+}
+```
+
+权限要求: 任何已登录用户
+
+#### 生成群组邀请码
+
+```
+POST /api/oss/group/invite
+```
+
+请求体:
+```json
+{
+  "group_id": 1,
+  "expire_days": 30  // 过期天数，0表示永不过期
+}
+```
+
+响应:
+```json
+{
+  "code": 0,
+  "message": "成功",
+  "data": {
+    "group_id": 1,
+    "group_name": "测试群组",
+    "invite_code": "ABC123",
+    "expire_at": "2023-07-01T12:00:00Z"
+  }
+}
+```
+
+权限要求: 群组管理员
+
+### 群组成员管理
+
+#### 添加群组成员
+
+```
+GET /api/oss/group/member/add/{id}?user_id=2&role=member
+```
+
+参数:
+- `id`: 群组ID
+- `user_id`: 用户ID
+- `role`: 角色，可选值：admin(管理员)、member(普通成员)
+
+响应:
+```json
+{
+  "code": 0,
+  "message": "成功",
+  "data": null
+}
+```
+
+权限要求: 群组管理员
+
+#### 更新成员角色
+
+```
+POST /api/oss/group/member/role/{id}
+```
+
+参数:
+- `id`: 群组ID
 
 请求体:
 ```json
 {
   "user_id": 2,
-  "role": "MEMBER"  // MEMBER 或 GROUP_ADMIN
+  "role": "admin"  // 可选值：admin, member
 }
 ```
 
-权限要求: `GROUP_ADMIN` 或组创建者
+响应:
+```json
+{
+  "code": 0,
+  "message": "成功",
+  "data": null
+}
+```
+
+权限要求: 群组管理员
+
+#### 移除群组成员
+
+```
+GET /api/oss/group/member/remove/{id}?user_id=2
+```
+
+参数:
+- `id`: 群组ID
+- `user_id`: 要移除的用户ID
+
+响应:
+```json
+{
+  "code": 0,
+  "message": "成功",
+  "data": null
+}
+```
+
+权限要求: 群组管理员
+
+#### 获取群组成员列表
+
+```
+GET /api/oss/group/member/list/{id}?page=1&size=10
+```
+
+参数:
+- `id`: 群组ID
+- `page`: 页码，默认1
+- `size`: 每页数量，默认10
+
+响应:
+```json
+{
+  "code": 0,
+  "message": "成功",
+  "data": {
+    "total": 10,
+    "items": [
+      {
+        "id": 1,
+        "user_id": 1,
+        "user_name": "用户1",
+        "email": "user1@example.com",
+        "avatar": "https://avatar.url/user1.jpg",
+        "role": "admin",
+        "joined_at": "2023-06-01T12:00:00Z",
+        "last_active_at": "2023-06-02T15:30:00Z"
+      },
+      // ... 更多成员
+    ]
+  }
+}
+```
+
+权限要求: 群组管理员
 
 ### 文件管理
 
@@ -267,33 +553,6 @@ DELETE /api/oss/v1/groups/{group_id}/projects/{project_id}/files/{file_id}
 ```
 
 权限要求: 对项目有写权限的成员或文件所有者
-
-### 角色与权限
-
-#### 查看所有角色
-
-```
-GET /api/oss/v1/roles
-```
-
-权限要求: `ADMIN` 或 `GROUP_ADMIN`
-
-#### 创建自定义角色
-
-```
-POST /api/oss/v1/roles
-```
-
-请求体:
-```json
-{
-  "name": "自定义角色",
-  "description": "自定义角色描述",
-  "permissions": ["file:read", "file:write"]
-}
-```
-
-权限要求: `ADMIN` 或 `GROUP_ADMIN`
 
 ## Swagger使用指南
 
