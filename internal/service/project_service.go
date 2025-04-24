@@ -42,6 +42,9 @@ type ProjectService interface {
 	RemovePermission(ctx context.Context, req *dto.RemovePermissionRequest, userID string) error
 	ListProjectUsers(ctx context.Context, projectID string, userID string) ([]*dto.ProjectUserResponse, error)
 
+	// 确保项目成员拥有适当的文件权限
+	EnsureProjectMemberPermissions(ctx context.Context, projectID string, userID string) error
+
 	// 检查权限
 	CheckUserProjectAccess(ctx context.Context, userID, projectID string, requiredRoles []string) (bool, error)
 }
@@ -145,58 +148,42 @@ func (s *projectService) CreateProject(ctx context.Context, req *dto.CreateProje
 			return err
 		}
 
-		// 添加Casbin权限规则，为项目创建者设置文件操作权限
-		if s.authService != nil {
-			projectDomain := fmt.Sprintf("project:%s", project.ID)
+		// 添加项目权限，为项目创建者设置项目管理员角色和文件操作权限
+		projectDomain := fmt.Sprintf("project:%s", project.ID)
 
-			// 为用户添加项目管理员角色 - 这里使用已有的角色常量
-			err = s.authService.AddRoleForUser(ctx, creatorID, entity.RoleGroupAdmin, projectDomain)
-			if err != nil {
-				// 记录错误但不阻止流程
-				fmt.Printf("设置项目管理员角色失败: %v\n", err)
-			}
+		// 1. 添加项目管理员角色 - 使用现有的AddRoleForUser方法
+		err = s.authService.AddRoleForUser(ctx, creatorID, entity.RoleGroupAdmin, projectDomain)
+		if err != nil {
+			// 只记录错误，不中断流程
+			fmt.Printf("设置项目管理员角色失败: %v\n", err)
+		}
 
-			// 为用户添加对文件资源的各种权限
-			// 使用CheckPermission方法添加权限
-			userSub := fmt.Sprintf("user:%s", creatorID)
+		// 2. 直接添加文件资源的所有操作权限
+		// 使用AddResourcePermission添加明确的权限，替代之前的检查后添加的模式
 
-			// 使用AuthService接口提供的方法，而不是直接访问enforcer
-			// 读取文件权限
-			allowed, err := s.authService.CheckPermission(userSub, projectDomain, ResourceFile, ActionRead)
-			if err != nil || !allowed {
-				// 没有权限，需要补充添加
-				err = s.addPermission(ctx, creatorID, projectDomain, ResourceFile, ActionRead)
-				if err != nil {
-					fmt.Printf("添加文件读取权限失败: %v\n", err)
-				}
-			}
+		// 添加文件读取权限
+		err = s.authService.AddResourcePermission(ctx, creatorID, projectDomain, ResourceFile, ActionRead)
+		if err != nil {
+			fmt.Printf("添加文件读取权限失败: %v\n", err)
+			// 继续执行，不返回错误
+		}
 
-			// 创建文件权限
-			allowed, err = s.authService.CheckPermission(userSub, projectDomain, ResourceFile, ActionCreate)
-			if err != nil || !allowed {
-				err = s.addPermission(ctx, creatorID, projectDomain, ResourceFile, ActionCreate)
-				if err != nil {
-					fmt.Printf("添加文件创建权限失败: %v\n", err)
-				}
-			}
+		// 添加文件创建权限
+		err = s.authService.AddResourcePermission(ctx, creatorID, projectDomain, ResourceFile, ActionCreate)
+		if err != nil {
+			fmt.Printf("添加文件创建权限失败: %v\n", err)
+		}
 
-			// 更新文件权限
-			allowed, err = s.authService.CheckPermission(userSub, projectDomain, ResourceFile, ActionUpdate)
-			if err != nil || !allowed {
-				err = s.addPermission(ctx, creatorID, projectDomain, ResourceFile, ActionUpdate)
-				if err != nil {
-					fmt.Printf("添加文件更新权限失败: %v\n", err)
-				}
-			}
+		// 添加文件更新权限
+		err = s.authService.AddResourcePermission(ctx, creatorID, projectDomain, ResourceFile, ActionUpdate)
+		if err != nil {
+			fmt.Printf("添加文件更新权限失败: %v\n", err)
+		}
 
-			// 删除文件权限
-			allowed, err = s.authService.CheckPermission(userSub, projectDomain, ResourceFile, ActionDelete)
-			if err != nil || !allowed {
-				err = s.addPermission(ctx, creatorID, projectDomain, ResourceFile, ActionDelete)
-				if err != nil {
-					fmt.Printf("添加文件删除权限失败: %v\n", err)
-				}
-			}
+		// 添加文件删除权限
+		err = s.authService.AddResourcePermission(ctx, creatorID, projectDomain, ResourceFile, ActionDelete)
+		if err != nil {
+			fmt.Printf("添加文件删除权限失败: %v\n", err)
 		}
 
 		return nil
@@ -228,21 +215,6 @@ func (s *projectService) CreateProject(ctx context.Context, req *dto.CreateProje
 		FileCount:   0, // 初始文件数为0
 		TotalSize:   0, // 初始存储大小为0
 	}, nil
-}
-
-// addPermission 添加权限规则，为私有方法，不暴露在接口中
-func (s *projectService) addPermission(ctx context.Context, userID, domain, resource, action string) error {
-	// 通过调用casbin的API手动添加权限规则
-	// 注意：这是一个临时解决方案，更好的做法是在AuthService接口中添加相应方法
-	userSub := fmt.Sprintf("user:%s", userID)
-	// 必须使用AuthService现有方法，而非直接访问enforcer
-	// 检查是否有权限，如无则尝试添加自定义规则
-	allowed, _ := s.authService.CheckPermission(userSub, domain, resource, action)
-	if !allowed {
-		// 如果没有找到好的方法添加权限，至少确保记录日志
-		fmt.Printf("需要为用户 %s 添加 %s 权限到 %s 资源在 %s 域\n", userID, action, resource, domain)
-	}
-	return nil
 }
 
 // UpdateProject 更新项目
@@ -628,7 +600,7 @@ func (s *projectService) SetPermission(ctx context.Context, req *dto.SetPermissi
 	}
 
 	// 启动事务
-	return s.db.Transaction(func(tx *gorm.DB) error {
+	err = s.db.Transaction(func(tx *gorm.DB) error {
 		projectRepo := s.projectRepo.WithTx(tx)
 
 		// 检查是否已经是项目成员
@@ -640,17 +612,38 @@ func (s *projectService) SetPermission(ctx context.Context, req *dto.SetPermissi
 		// 如果已存在成员记录，更新角色
 		if member != nil {
 			member.Role = req.Role
-			return projectRepo.UpdateProjectMember(ctx, member)
+			err = projectRepo.UpdateProjectMember(ctx, member)
+			if err != nil {
+				return err
+			}
+		} else {
+			// 否则创建新的成员记录
+			newMember := &entity.ProjectMember{
+				ProjectID: req.ProjectID,
+				UserID:    req.UserID,
+				Role:      req.Role,
+			}
+			err = projectRepo.CreateProjectMember(ctx, newMember)
+			if err != nil {
+				return err
+			}
 		}
 
-		// 否则创建新的成员记录
-		newMember := &entity.ProjectMember{
-			ProjectID: req.ProjectID,
-			UserID:    req.UserID,
-			Role:      req.Role,
-		}
-		return projectRepo.CreateProjectMember(ctx, newMember)
+		return nil
 	})
+
+	if err != nil {
+		return err
+	}
+
+	// 为用户设置适当的文件权限
+	err = s.EnsureProjectMemberPermissions(ctx, req.ProjectID, req.UserID)
+	if err != nil {
+		// 只记录错误，不中断流程
+		fmt.Printf("设置文件权限失败: %v\n", err)
+	}
+
+	return nil
 }
 
 // RemovePermission 移除权限
@@ -814,4 +807,51 @@ func (s *projectService) CheckUserProjectAccess(ctx context.Context, userID, pro
 	}
 
 	return false, nil
+}
+
+// EnsureProjectMemberPermissions 确保项目成员拥有适当的文件权限
+func (s *projectService) EnsureProjectMemberPermissions(ctx context.Context, projectID string, userID string) error {
+	// 检查用户是否是项目成员
+	member, err := s.projectRepo.GetProjectMember(ctx, projectID, userID)
+	if err != nil {
+		return err
+	}
+
+	if member == nil {
+		return errors.New("用户不是项目成员")
+	}
+
+	// 根据角色设置权限
+	projectDomain := fmt.Sprintf("project:%s", projectID)
+
+	// 所有角色都有读取权限
+	err = s.authService.AddResourcePermission(ctx, userID, projectDomain, ResourceFile, ActionRead)
+	if err != nil {
+		fmt.Printf("添加文件读取权限失败: %v\n", err)
+	}
+
+	// admin和editor角色有创建、更新、删除权限
+	if member.Role == ProjectRoleAdmin || member.Role == ProjectRoleEditor {
+		// 创建权限
+		err = s.authService.AddResourcePermission(ctx, userID, projectDomain, ResourceFile, ActionCreate)
+		if err != nil {
+			fmt.Printf("添加文件创建权限失败: %v\n", err)
+		}
+
+		// 更新权限
+		err = s.authService.AddResourcePermission(ctx, userID, projectDomain, ResourceFile, ActionUpdate)
+		if err != nil {
+			fmt.Printf("添加文件更新权限失败: %v\n", err)
+		}
+
+		// admin角色有删除权限
+		if member.Role == ProjectRoleAdmin {
+			err = s.authService.AddResourcePermission(ctx, userID, projectDomain, ResourceFile, ActionDelete)
+			if err != nil {
+				fmt.Printf("添加文件删除权限失败: %v\n", err)
+			}
+		}
+	}
+
+	return nil
 }

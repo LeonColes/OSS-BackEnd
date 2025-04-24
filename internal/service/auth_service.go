@@ -61,7 +61,8 @@ type AuthService interface {
 	CanUserAccessResource(ctx context.Context, userID string, resourceType, action, domain string) (bool, error)
 	IsUserInRole(ctx context.Context, userID string, roleCode string, domain string) (bool, error)
 
-	// 项目权限检查方法
+	// 直接资源权限管理
+	AddResourcePermission(ctx context.Context, userID, domain, resource, action string) error
 }
 
 // authService 认证授权服务实现
@@ -491,4 +492,11 @@ func (s *authService) UpdateRoleFromDTO(ctx context.Context, req *dto.RoleUpdate
 	}
 
 	return nil
+}
+
+// AddResourcePermission 为用户添加直接的资源权限
+func (s *authService) AddResourcePermission(ctx context.Context, userID, domain, resource, action string) error {
+	userSub := fmt.Sprintf("user:%s", userID)
+	_, err := s.enforcer.AddPermissionForUser(userSub, domain, resource, action)
+	return err
 }

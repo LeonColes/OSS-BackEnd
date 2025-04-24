@@ -168,7 +168,11 @@ func initDB() (*gorm.DB, error) {
 		&entity.UserRole{},
 		&entity.Log{},
 		&entity.Project{},
+		&entity.ProjectMember{},
+		&entity.Permission{},
 		&entity.File{},
+		&entity.FileVersion{},
+		&entity.FileShare{},
 		&entity.Group{},
 		&entity.GroupMember{},
 	)
