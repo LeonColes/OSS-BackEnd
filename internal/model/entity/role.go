@@ -25,7 +25,7 @@ func (Role) TableName() string {
 
 // 预定义系统角色
 const (
-	RoleGroupAdmin   = "GROUP_ADMIN"   // 群组管理员
-	RoleProjectAdmin = "PROJECT_ADMIN" // 项目管理员
-	RoleMember       = "MEMBER"        // 普通成员
+	RoleAdmin      = "ADMIN"       // 系统管理员
+	RoleGroupAdmin = "GROUP_ADMIN" // 群组管理员
+	RoleMember     = "MEMBER"      // 普通成员
 )

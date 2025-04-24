@@ -22,6 +22,8 @@ type RoleRepository interface {
 	GetByCode(ctx context.Context, code string) (*entity.Role, error)
 	// List 获取角色列表
 	List(ctx context.Context, name string, status int, page, size int) ([]*entity.Role, int64, error)
+	// GetAll 获取所有角色
+	GetAll(ctx context.Context) ([]entity.Role, error)
 	// InitSystemRoles 初始化系统角色
 	InitSystemRoles(ctx context.Context) error
 }
@@ -73,6 +75,16 @@ func (r *roleRepository) GetByCode(ctx context.Context, code string) (*entity.Ro
 	return &role, nil
 }
 
+// GetAll 获取所有角色
+func (r *roleRepository) GetAll(ctx context.Context) ([]entity.Role, error) {
+	var roles []entity.Role
+	err := r.db.WithContext(ctx).Find(&roles).Error
+	if err != nil {
+		return nil, err
+	}
+	return roles, nil
+}
+
 // List 获取角色列表
 func (r *roleRepository) List(ctx context.Context, name string, status int, page, size int) ([]*entity.Role, int64, error) {
 	var roles []*entity.Role
@@ -111,16 +123,16 @@ func (r *roleRepository) InitSystemRoles(ctx context.Context) error {
 	// 预定义的系统角色
 	systemRoles := []*entity.Role{
 		{
-			Name:        "群组管理员",
-			Description: "负责管理和规划项目，控制项目数量和资源分配",
-			Code:        entity.RoleGroupAdmin,
+			Name:        "系统管理员",
+			Description: "拥有系统的最高权限",
+			Code:        entity.RoleAdmin,
 			Status:      1,
 			IsSystem:    true,
 		},
 		{
-			Name:        "项目管理员",
-			Description: "负责管理项目成员，控制项目人数和成员权限",
-			Code:        entity.RoleProjectAdmin,
+			Name:        "群组管理员",
+			Description: "负责管理和规划项目，控制项目数量和资源分配",
+			Code:        entity.RoleGroupAdmin,
 			Status:      1,
 			IsSystem:    true,
 		},

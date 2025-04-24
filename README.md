@@ -261,3 +261,33 @@ Swagger文档定义了多个环境，可在Apifox中轻松切换：
 [产品设计文档](./Product%20Design.md)
 [后端设计文档](./BackEnd%20Design.md)
 [角色设计文档](./Role%20Design.md)
+
+## 角色管理说明
+
+### 角色权限
+
+本系统采用基于角色的访问控制（RBAC）模型，并通过Casbin实现动态权限管理。系统中有三种预定义角色：
+
+1. **ADMIN（系统管理员）** - 拥有全局权限
+2. **GROUP_ADMIN（群组管理员）** - 拥有群组级别的管理权限
+3. **MEMBER（普通成员）** - 拥有基本使用权限
+
+### 自定义角色
+
+系统允许 **ADMIN** 和 **GROUP_ADMIN** 角色创建和管理自定义角色：
+
+- 自定义角色可以设置名称、描述和唯一编码
+- 创建角色后可以为用户分配相应角色
+- 每个角色可以关联特定的权限策略
+
+### 角色管理接口权限
+
+角色管理相关API接口需要ADMIN或GROUP_ADMIN权限才能访问：
+
+- 创建角色: `/api/oss/role/create`
+- 更新角色: `/api/oss/role/update`
+- 删除角色: `/api/oss/role/delete/{id}`
+- 角色详情: `/api/oss/role/detail/{id}`
+- 角色列表: `/api/oss/role/list`
+
+详细的角色和权限设计请参阅 [权限设计文档](./permissions.md)。

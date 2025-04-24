@@ -41,13 +41,13 @@ func (c *UserController) Register(ctx *gin.Context) {
 		return
 	}
 
-	err := c.userService.Register(ctx, &req)
+	user, err := c.userService.Register(ctx, &req)
 	if err != nil {
 		ctx.JSON(http.StatusBadRequest, common.ErrorResponse(err.Error()))
 		return
 	}
 
-	ctx.JSON(http.StatusOK, common.SuccessResponse(nil))
+	ctx.JSON(http.StatusOK, common.SuccessResponse(user))
 }
 
 // Login 用户登录

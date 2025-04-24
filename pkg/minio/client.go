@@ -243,9 +243,7 @@ func GetObjectName(projectID uint64, filePath, fileName string) string {
 	if !strings.HasPrefix(objectPath, "/") {
 		objectPath = "/" + objectPath
 	}
-	if strings.HasSuffix(objectPath, "/") {
-		objectPath = objectPath[:len(objectPath)-1]
-	}
+	objectPath = strings.TrimSuffix(objectPath, "/")
 
 	// 拼接文件名
 	return strings.TrimPrefix(filepath.Join(objectPath, fileName), "/")

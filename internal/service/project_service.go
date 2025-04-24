@@ -52,7 +52,7 @@ type projectService struct {
 	projectRepo repository.ProjectRepository
 	groupRepo   repository.GroupRepository
 	userRepo    repository.UserRepository
-	casbinSvc   CasbinService
+	authSvc     AuthService
 }
 
 // NewProjectService 创建项目服务
@@ -60,13 +60,13 @@ func NewProjectService(
 	projectRepo repository.ProjectRepository,
 	groupRepo repository.GroupRepository,
 	userRepo repository.UserRepository,
-	casbinSvc CasbinService,
+	authSvc AuthService,
 ) ProjectService {
 	return &projectService{
 		projectRepo: projectRepo,
 		groupRepo:   groupRepo,
 		userRepo:    userRepo,
-		casbinSvc:   casbinSvc,
+		authSvc:     authSvc,
 	}
 }
 
@@ -124,8 +124,7 @@ func (s *projectService) CreateProject(ctx context.Context, req *dto.CreateProje
 
 	// 添加项目管理员权限到Casbin
 	domain := fmt.Sprintf("project:%d", project.ID)
-	sub := fmt.Sprintf("user:%d", creatorID)
-	_, err = s.casbinSvc.AddRoleForUser(sub, ProjectRoleAdmin, domain)
+	err = s.authSvc.AddRoleForUser(ctx, creatorID, ProjectRoleAdmin, domain)
 	if err != nil {
 		return nil, err
 	}
@@ -431,23 +430,24 @@ func (s *projectService) SetPermission(ctx context.Context, req *dto.SetPermissi
 
 	// 更新Casbin权限
 	domain := fmt.Sprintf("project:%d", req.ProjectID)
-	sub := fmt.Sprintf("user:%d", req.UserID)
+	// sub := fmt.Sprintf("user:%d", req.UserID)
 
 	// 先移除旧角色
-	roles, err := s.casbinSvc.GetRolesForUser(sub, domain)
+	subject := fmt.Sprintf("user:%d", req.UserID)
+	roles, err := s.authSvc.GetRolesForUser(subject, domain)
 	if err != nil {
 		return err
 	}
 
 	for _, role := range roles {
-		_, err = s.casbinSvc.RemoveRoleForUser(sub, role, domain)
+		err = s.authSvc.RemoveRoleForUser(ctx, req.UserID, role, domain)
 		if err != nil {
 			return err
 		}
 	}
 
 	// 添加新角色
-	_, err = s.casbinSvc.AddRoleForUser(sub, req.Role, domain)
+	err = s.authSvc.AddRoleForUser(ctx, req.UserID, req.Role, domain)
 	if err != nil {
 		return err
 	}
@@ -506,16 +506,17 @@ func (s *projectService) RemovePermission(ctx context.Context, req *dto.RemovePe
 
 	// 更新Casbin权限
 	domain := fmt.Sprintf("project:%d", req.ProjectID)
-	sub := fmt.Sprintf("user:%d", req.UserID)
+	// sub := fmt.Sprintf("user:%d", req.UserID)
 
 	// 移除角色
-	roles, err := s.casbinSvc.GetRolesForUser(sub, domain)
+	subject := fmt.Sprintf("user:%d", req.UserID)
+	roles, err := s.authSvc.GetRolesForUser(subject, domain)
 	if err != nil {
 		return err
 	}
 
 	for _, role := range roles {
-		_, err = s.casbinSvc.RemoveRoleForUser(sub, role, domain)
+		err = s.authSvc.RemoveRoleForUser(ctx, req.UserID, role, domain)
 		if err != nil {
 			return err
 		}

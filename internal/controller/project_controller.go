@@ -29,7 +29,7 @@ func NewProjectController(projectService service.ProjectService) *ProjectControl
 // @Tags 项目管理
 // @Accept json
 // @Produce json
-// @Param Authorization header string true "Bearer 用户令牌"
+// @Param Authorization header string true "Bearer {{token}}"
 // @Param request body dto.CreateProjectRequest true "项目信息"
 // @Success 200 {object} common.Response{data=dto.ProjectResponse} "成功"
 // @Failure 400 {object} common.Response "请求参数错误"
@@ -69,7 +69,7 @@ func (c *ProjectController) CreateProject(ctx *gin.Context) {
 // @Tags 项目管理
 // @Accept json
 // @Produce json
-// @Param Authorization header string true "Bearer 用户令牌"
+// @Param Authorization header string true "Bearer {{token}}"
 // @Param request body dto.UpdateProjectRequest true "项目信息"
 // @Success 200 {object} common.Response{data=dto.ProjectResponse} "成功"
 // @Failure 400 {object} common.Response "请求参数错误"
@@ -109,7 +109,7 @@ func (c *ProjectController) UpdateProject(ctx *gin.Context) {
 // @Tags 项目管理
 // @Accept json
 // @Produce json
-// @Param Authorization header string true "Bearer 用户令牌"
+// @Param Authorization header string true "Bearer {{token}}"
 // @Param id path int true "项目ID"
 // @Success 200 {object} common.Response{data=dto.ProjectResponse} "成功"
 // @Failure 400 {object} common.Response "请求参数错误"
@@ -150,7 +150,7 @@ func (c *ProjectController) GetProjectByID(ctx *gin.Context) {
 // @Tags 项目管理
 // @Accept json
 // @Produce json
-// @Param Authorization header string true "Bearer 用户令牌"
+// @Param Authorization header string true "Bearer {{token}}"
 // @Param group_id query int false "群组ID"
 // @Param status query int false "项目状态: 1-正常, 2-归档, 3-删除"
 // @Param keyword query string false "关键词"
@@ -195,7 +195,7 @@ func (c *ProjectController) ListProjects(ctx *gin.Context) {
 // @Tags 项目管理
 // @Accept json
 // @Produce json
-// @Param Authorization header string true "Bearer 用户令牌"
+// @Param Authorization header string true "Bearer {{token}}"
 // @Param group_id query int false "群组ID"
 // @Param status query int false "项目状态: 1-正常, 2-归档, 3-删除"
 // @Param keyword query string false "关键词"
@@ -240,7 +240,7 @@ func (c *ProjectController) GetUserProjects(ctx *gin.Context) {
 // @Tags 项目管理
 // @Accept json
 // @Produce json
-// @Param Authorization header string true "Bearer 用户令牌"
+// @Param Authorization header string true "Bearer {{token}}"
 // @Param id path int true "项目ID"
 // @Success 200 {object} common.Response "成功"
 // @Failure 400 {object} common.Response "请求参数错误"
@@ -281,7 +281,7 @@ func (c *ProjectController) DeleteProject(ctx *gin.Context) {
 // @Tags 项目管理
 // @Accept json
 // @Produce json
-// @Param Authorization header string true "Bearer 用户令牌"
+// @Param Authorization header string true "Bearer {{token}}"
 // @Param request body dto.SetPermissionRequest true "权限信息"
 // @Success 200 {object} common.Response "成功"
 // @Failure 400 {object} common.Response "请求参数错误"
@@ -321,7 +321,7 @@ func (c *ProjectController) SetPermission(ctx *gin.Context) {
 // @Tags 项目管理
 // @Accept json
 // @Produce json
-// @Param Authorization header string true "Bearer 用户令牌"
+// @Param Authorization header string true "Bearer {{token}}"
 // @Param request body dto.RemovePermissionRequest true "移除信息"
 // @Success 200 {object} common.Response "成功"
 // @Failure 400 {object} common.Response "请求参数错误"
@@ -361,7 +361,7 @@ func (c *ProjectController) RemovePermission(ctx *gin.Context) {
 // @Tags 项目管理
 // @Accept json
 // @Produce json
-// @Param Authorization header string true "Bearer 用户令牌"
+// @Param Authorization header string true "Bearer {{token}}"
 // @Param id path int true "项目ID"
 // @Success 200 {object} common.Response{data=[]dto.ProjectUserResponse} "成功"
 // @Failure 400 {object} common.Response "请求参数错误"

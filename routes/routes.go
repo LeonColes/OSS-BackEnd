@@ -1,10 +1,9 @@
 package routes
 
 import (
-	"context"
-
 	_ "oss-backend/docs/swagger" // 统一Swagger文档导入路径
 
+	"github.com/casbin/casbin/v2"
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -34,52 +33,60 @@ func SetupRouter(r *gin.Engine, db interface{}) {
 	userRepo := repository.NewUserRepository(gormDB)
 	roleRepo := repository.NewRoleRepository(gormDB)
 	groupRepo := repository.NewGroupRepository(gormDB)
+	casbinRepo := repository.NewCasbinRepository(gormDB)
 
-	// 创建角色中间件
-	roleMiddleware := middleware.NewRoleAuthMiddleware(userRepo)
-
-	// 创建Casbin服务
-	casbinSvc, err := service.NewCasbinService(gormDB, userRepo, roleRepo, groupRepo)
+	// 初始化Casbin执行器
+	enforcer, err := casbin.NewEnforcer("configs/rbac_model.conf", "configs/policy.csv")
 	if err != nil {
-		panic("创建Casbin服务失败: " + err.Error())
+		panic("初始化Casbin执行器失败: " + err.Error())
 	}
+
+	// 创建统一的认证授权服务
+	authSvc := service.NewAuthService(enforcer, roleRepo, userRepo, casbinRepo, gormDB)
+
+	// 初始化RBAC权限
+	err = authSvc.InitializeRBAC()
+	if err != nil {
+		panic("初始化RBAC权限失败: " + err.Error())
+	}
+
+	// 创建认证与授权中间件
+	authMiddleware := middleware.NewAuthMiddleware(authSvc, userRepo, enforcer)
 
 	// 设置 API 前缀
 	apiGroup := r.Group("/api/oss")
 
 	// 注册角色相关路由
-	registerRoleRoutes(apiGroup, gormDB, jwtMiddleware, roleMiddleware)
+	registerRoleRoutes(apiGroup, gormDB, jwtMiddleware, authMiddleware, authSvc)
 
 	// 注册用户相关路由
-	registerUserRoutes(apiGroup, gormDB, jwtMiddleware, roleMiddleware)
+	registerUserRoutes(apiGroup, gormDB, jwtMiddleware, authMiddleware, authSvc)
 
 	// 注册群组相关路由
-	registerGroupRoutes(apiGroup, userRepo, roleRepo, groupRepo, jwtMiddleware)
+	registerGroupRoutes(apiGroup, userRepo, roleRepo, groupRepo, jwtMiddleware, authMiddleware)
 
 	// 注册项目相关路由
-	registerProjectRoutes(apiGroup, gormDB, jwtMiddleware, casbinSvc)
+	registerProjectRoutes(apiGroup, gormDB, jwtMiddleware, authSvc, authMiddleware)
 
 	// 注册文件相关路由 (空壳)
-	registerFileRoutes(apiGroup, jwtMiddleware)
+	registerFileRoutes(apiGroup, jwtMiddleware, authMiddleware)
 }
 
 // 注册角色相关路由
-func registerRoleRoutes(apiGroup *gin.RouterGroup, db *gorm.DB, jwtMiddleware *middleware.JWTAuthMiddleware, roleMiddleware *middleware.RoleAuthMiddleware) {
+func registerRoleRoutes(
+	apiGroup *gin.RouterGroup,
+	db *gorm.DB,
+	jwtMiddleware *middleware.JWTAuthMiddleware,
+	authMiddleware *middleware.AuthMiddleware,
+	authService service.AuthService,
+) {
 	// 创建依赖
-	roleRepo := repository.NewRoleRepository(db)
-	roleService := service.NewRoleService(roleRepo)
-	roleController := controller.NewRoleController(roleService)
-
-	// 初始化系统角色
-	err := roleService.InitSystemRoles(context.Background())
-	if err != nil {
-		panic("初始化系统角色失败: " + err.Error())
-	}
+	roleController := controller.NewRoleController(authService)
 
 	// 角色相关路由 - 需要管理员权限
 	roleGroup := apiGroup.Group("/role")
 	roleGroup.Use(jwtMiddleware.AuthMiddleware())
-	roleGroup.Use(roleMiddleware.RequireAnyRole("admin", "super_admin"))
+	roleGroup.Use(authMiddleware.RequireAnyRole("ADMIN", "GROUP_ADMIN"))
 	{
 		roleGroup.POST("/create", roleController.CreateRole)
 		roleGroup.POST("/update", roleController.UpdateRole)
@@ -90,11 +97,17 @@ func registerRoleRoutes(apiGroup *gin.RouterGroup, db *gorm.DB, jwtMiddleware *m
 }
 
 // 注册用户相关路由
-func registerUserRoutes(apiGroup *gin.RouterGroup, db *gorm.DB, jwtMiddleware *middleware.JWTAuthMiddleware, roleMiddleware *middleware.RoleAuthMiddleware) {
+func registerUserRoutes(
+	apiGroup *gin.RouterGroup,
+	db *gorm.DB,
+	jwtMiddleware *middleware.JWTAuthMiddleware,
+	authMiddleware *middleware.AuthMiddleware,
+	authService service.AuthService,
+) {
 	// 创建依赖
 	userRepo := repository.NewUserRepository(db)
 	roleRepo := repository.NewRoleRepository(db)
-	userService := service.NewUserService(userRepo, roleRepo)
+	userService := service.NewUserService(userRepo, roleRepo, authService)
 	userController := controller.NewUserController(userService)
 
 	// 用户相关路由
@@ -115,7 +128,7 @@ func registerUserRoutes(apiGroup *gin.RouterGroup, db *gorm.DB, jwtMiddleware *m
 
 			// 用户管理 - 需要管理员权限
 			adminGroup := authGroup.Group("/")
-			adminGroup.Use(roleMiddleware.RequireAnyRole("admin", "super_admin"))
+			adminGroup.Use(authMiddleware.RequireAnyRole("GROUP_ADMIN"))
 			{
 				adminGroup.GET("/list", userController.ListUsers)
 				adminGroup.GET("/status/:id", userController.UpdateUserStatus)
@@ -130,7 +143,14 @@ func registerUserRoutes(apiGroup *gin.RouterGroup, db *gorm.DB, jwtMiddleware *m
 }
 
 // 注册群组相关路由
-func registerGroupRoutes(apiGroup *gin.RouterGroup, userRepo repository.UserRepository, roleRepo repository.RoleRepository, groupRepo repository.GroupRepository, jwtMiddleware *middleware.JWTAuthMiddleware) {
+func registerGroupRoutes(
+	apiGroup *gin.RouterGroup,
+	userRepo repository.UserRepository,
+	roleRepo repository.RoleRepository,
+	groupRepo repository.GroupRepository,
+	jwtMiddleware *middleware.JWTAuthMiddleware,
+	authMiddleware *middleware.AuthMiddleware,
+) {
 	// 创建依赖
 	groupService := service.NewGroupService(groupRepo, userRepo, roleRepo)
 	groupController := controller.NewGroupController(groupService)
@@ -148,16 +168,26 @@ func registerGroupRoutes(apiGroup *gin.RouterGroup, userRepo repository.UserRepo
 		groupGroup.POST("/join", groupController.JoinGroup)
 		groupGroup.POST("/invite", groupController.GenerateInviteCode)
 
-		// 成员管理
-		groupGroup.GET("/member/add/:id", groupController.AddMember)
-		groupGroup.POST("/member/role/:id", groupController.UpdateMemberRole)
-		groupGroup.GET("/member/remove/:id", groupController.RemoveMember)
-		groupGroup.GET("/member/list/:id", groupController.ListMembers)
+		// 成员管理 - 需要群组管理员权限
+		memberGroup := groupGroup.Group("/member")
+		memberGroup.Use(authMiddleware.RequireAdmin())
+		{
+			memberGroup.GET("/add/:id", groupController.AddMember)
+			memberGroup.POST("/role/:id", groupController.UpdateMemberRole)
+			memberGroup.GET("/remove/:id", groupController.RemoveMember)
+			memberGroup.GET("/list/:id", groupController.ListMembers)
+		}
 	}
 }
 
 // 注册项目相关路由
-func registerProjectRoutes(apiGroup *gin.RouterGroup, db *gorm.DB, jwtMiddleware *middleware.JWTAuthMiddleware, casbinService service.CasbinService) {
+func registerProjectRoutes(
+	apiGroup *gin.RouterGroup,
+	db *gorm.DB,
+	jwtMiddleware *middleware.JWTAuthMiddleware,
+	authService service.AuthService,
+	authMiddleware *middleware.AuthMiddleware,
+) {
 	// 初始化项目仓库和服务
 	projectRepo := repository.NewProjectRepository(db)
 	groupRepo := repository.NewGroupRepository(db)
@@ -167,38 +197,56 @@ func registerProjectRoutes(apiGroup *gin.RouterGroup, db *gorm.DB, jwtMiddleware
 		projectRepo,
 		groupRepo,
 		userRepo,
-		casbinService,
+		authService,
 	)
 	projectController := controller.NewProjectController(projectService)
+
+	// 定义中间件辅助函数
+	getProjectGroupID := func(c *gin.Context) (string, error) {
+		return middleware.GetGroupIDFromParam(c)
+	}
 
 	// 项目相关路由
 	projectGroup := apiGroup.Group("/project")
 	projectGroup.Use(jwtMiddleware.AuthMiddleware())
 	{
 		// 项目管理
-		projectGroup.POST("/create", projectController.CreateProject)
-		projectGroup.POST("/update", projectController.UpdateProject)
-		projectGroup.GET("/detail/:id", projectController.GetProjectByID)
-		projectGroup.GET("/delete/:id", projectController.DeleteProject)
-		projectGroup.GET("/list", projectController.ListProjects)
+		projectGroup.POST("/create", authMiddleware.Authorize("projects", "create", getProjectGroupID), projectController.CreateProject)
+		projectGroup.POST("/update", authMiddleware.Authorize("projects", "update", getProjectGroupID), projectController.UpdateProject)
+		projectGroup.GET("/detail/:id", authMiddleware.Authorize("projects", "read", getProjectGroupID), projectController.GetProjectByID)
+		projectGroup.GET("/delete/:id", authMiddleware.Authorize("projects", "delete", getProjectGroupID), projectController.DeleteProject)
+		projectGroup.GET("/list", authMiddleware.Authorize("projects", "read", getProjectGroupID), projectController.ListProjects)
 		projectGroup.GET("/user", projectController.GetUserProjects)
 
-		// 项目成员管理
-		projectGroup.POST("/permission/set", projectController.SetPermission)
-		projectGroup.POST("/permission/remove", projectController.RemovePermission)
-		projectGroup.GET("/users/:id", projectController.ListProjectUsers)
+		// 项目成员管理 - 需要群组管理员权限
+		memberGroup := projectGroup.Group("/member")
+		memberGroup.Use(authMiddleware.RequireAdmin())
+		{
+			memberGroup.POST("/add", projectController.SetPermission)
+			memberGroup.POST("/remove", projectController.RemovePermission)
+			memberGroup.GET("/list/:id", projectController.ListProjectUsers)
+		}
 	}
 }
 
 // 注册文件相关路由 (空壳)
-func registerFileRoutes(apiGroup *gin.RouterGroup, jwtMiddleware *middleware.JWTAuthMiddleware) {
+func registerFileRoutes(
+	apiGroup *gin.RouterGroup,
+	jwtMiddleware *middleware.JWTAuthMiddleware,
+	authMiddleware *middleware.AuthMiddleware,
+) {
+	// 定义文件中间件辅助函数
+	getFileGroupID := func(c *gin.Context) (string, error) {
+		return middleware.GetGroupIDFromParam(c)
+	}
+
 	fileGroup := apiGroup.Group("/file")
 	fileGroup.Use(jwtMiddleware.AuthMiddleware())
 	{
 		// 文件相关路由 (空壳)
-		fileGroup.POST("/upload", func(c *gin.Context) {})
-		fileGroup.GET("/download/:id", func(c *gin.Context) {})
-		fileGroup.GET("/delete/:id", func(c *gin.Context) {})
-		fileGroup.GET("/list", func(c *gin.Context) {})
+		fileGroup.POST("/upload", authMiddleware.Authorize("files", "create", getFileGroupID), func(c *gin.Context) {})
+		fileGroup.GET("/download/:id", authMiddleware.Authorize("files", "read", getFileGroupID), func(c *gin.Context) {})
+		fileGroup.GET("/list", authMiddleware.Authorize("files", "read", getFileGroupID), func(c *gin.Context) {})
+		fileGroup.GET("/delete/:id", authMiddleware.Authorize("files", "delete", getFileGroupID), func(c *gin.Context) {})
 	}
 }

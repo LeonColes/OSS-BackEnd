@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
@@ -26,7 +27,7 @@ type JWTClaims struct {
 // UserService 用户服务接口
 type UserService interface {
 	// Register 用户注册
-	Register(ctx context.Context, req *dto.UserRegisterRequest) error
+	Register(ctx context.Context, req *dto.UserRegisterRequest) (*dto.UserResponse, error)
 	// Login 用户登录
 	Login(ctx context.Context, req *dto.UserLoginRequest, ip string) (*dto.LoginResponse, error)
 	// GetUserInfo 获取用户信息
@@ -45,34 +46,38 @@ type UserService interface {
 	AssignRoles(ctx context.Context, userID uint64, roleIDs []uint) error
 	// RemoveRoles 移除用户角色
 	RemoveRoles(ctx context.Context, userID uint64, roleIDs []uint) error
+	// InitAdminUser 初始化系统管理员用户
+	InitAdminUser(ctx context.Context) error
 }
 
 // userService 用户服务实现
 type userService struct {
-	userRepo repository.UserRepository
-	roleRepo repository.RoleRepository
+	userRepo    repository.UserRepository
+	roleRepo    repository.RoleRepository
+	authService AuthService
 }
 
 // NewUserService 创建用户服务
-func NewUserService(userRepo repository.UserRepository, roleRepo repository.RoleRepository) UserService {
+func NewUserService(userRepo repository.UserRepository, roleRepo repository.RoleRepository, authService AuthService) UserService {
 	return &userService{
-		userRepo: userRepo,
-		roleRepo: roleRepo,
+		userRepo:    userRepo,
+		roleRepo:    roleRepo,
+		authService: authService,
 	}
 }
 
 // Register 用户注册
-func (s *userService) Register(ctx context.Context, req *dto.UserRegisterRequest) error {
+func (s *userService) Register(ctx context.Context, req *dto.UserRegisterRequest) (*dto.UserResponse, error) {
 	// 检查邮箱是否已存在
 	existUser, err := s.userRepo.GetByEmail(ctx, req.Email)
 	if err == nil && existUser != nil {
-		return errors.New("邮箱已被注册")
+		return nil, errors.New("邮箱已被注册")
 	}
 
 	// 生成密码哈希
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// 创建用户
@@ -83,7 +88,40 @@ func (s *userService) Register(ctx context.Context, req *dto.UserRegisterRequest
 		Status:       entity.UserStatusNormal,
 	}
 
-	return s.userRepo.Create(ctx, user)
+	// 保存用户
+	err = s.userRepo.Create(ctx, user)
+	if err != nil {
+		return nil, err
+	}
+
+	// 为用户分配默认角色（普通成员）
+	defaultRole, err := s.roleRepo.GetByCode(ctx, entity.RoleMember)
+	if err == nil && defaultRole != nil {
+		// 分配默认角色
+		err = s.userRepo.AssignRoles(ctx, uint64(user.ID), []uint{defaultRole.ID})
+		if err != nil {
+			// 记录错误但不阻止注册完成
+			// TODO: 记录日志
+		}
+
+		// 同步到Casbin
+		if s.authService != nil {
+			_ = s.authService.AddRoleForUser(ctx, uint64(user.ID), entity.RoleMember, "0")
+		}
+	}
+
+	// 获取刚创建的用户完整信息（包括角色）
+	createdUser, err := s.userRepo.GetByID(ctx, uint64(user.ID))
+	if err != nil {
+		return nil, err
+	}
+
+	// 获取用户角色
+	roles, _ := s.userRepo.GetUserRoles(ctx, uint64(user.ID))
+	userResponse := s.convertToUserResponse(createdUser)
+	userResponse.Roles = s.convertToRoleResponses(roles)
+
+	return userResponse, nil
 }
 
 // Login 用户登录
@@ -290,14 +328,30 @@ func (s *userService) AssignRoles(ctx context.Context, userID uint64, roleIDs []
 	}
 
 	// 检查角色是否存在
+	var roles []entity.Role
 	for _, roleID := range roleIDs {
-		_, err := s.roleRepo.GetByID(ctx, roleID)
+		role, err := s.roleRepo.GetByID(ctx, roleID)
 		if err != nil {
 			return errors.New("角色不存在")
 		}
+		roles = append(roles, *role)
 	}
 
-	return s.userRepo.AssignRoles(ctx, userID, roleIDs)
+	// 数据库事务
+	err = s.userRepo.AssignRoles(ctx, userID, roleIDs)
+	if err != nil {
+		return err
+	}
+
+	// 同步到Casbin
+	if s.authService != nil {
+		// 为用户分配角色到Casbin
+		for _, role := range roles {
+			_ = s.authService.AddRoleForUser(ctx, userID, role.Code, "0")
+		}
+	}
+
+	return nil
 }
 
 // RemoveRoles 移除用户角色
@@ -308,7 +362,29 @@ func (s *userService) RemoveRoles(ctx context.Context, userID uint64, roleIDs []
 		return errors.New("用户不存在")
 	}
 
-	return s.userRepo.RemoveRoles(ctx, userID, roleIDs)
+	// 获取要删除的角色以同步Casbin
+	var rolesToRemove []entity.Role
+	for _, roleID := range roleIDs {
+		role, err := s.roleRepo.GetByID(ctx, roleID)
+		if err == nil && role != nil {
+			rolesToRemove = append(rolesToRemove, *role)
+		}
+	}
+
+	// 移除数据库中的角色
+	err = s.userRepo.RemoveRoles(ctx, userID, roleIDs)
+	if err != nil {
+		return err
+	}
+
+	// 同步到Casbin
+	if s.authService != nil && len(rolesToRemove) > 0 {
+		for _, role := range rolesToRemove {
+			_ = s.authService.RemoveRoleForUser(ctx, userID, role.Code, "0")
+		}
+	}
+
+	return nil
 }
 
 // convertToUserResponse 将用户实体转换为用户响应
@@ -345,4 +421,64 @@ func (s *userService) convertToRoleResponses(roles []entity.Role) []dto.RoleResp
 		})
 	}
 	return result
+}
+
+// InitAdminUser 初始化系统管理员用户
+func (s *userService) InitAdminUser(ctx context.Context) error {
+	// 检查是否已存在管理员用户
+	adminRole, err := s.roleRepo.GetByCode(ctx, entity.RoleAdmin)
+	if err != nil {
+		return fmt.Errorf("获取管理员角色失败: %w", err)
+	}
+
+	// 查询是否有用户拥有管理员角色
+	// 这里查询所有正常状态的用户，不进行分页限制
+	users, _, err := s.userRepo.List(ctx, "", "", entity.UserStatusNormal, 0, 0)
+	if err != nil {
+		return fmt.Errorf("查询用户失败: %w", err)
+	}
+
+	// 检查用户中是否有管理员
+	hasAdmin := false
+	for _, user := range users {
+		roles, err := s.userRepo.GetUserRoles(ctx, uint64(user.ID))
+		if err != nil {
+			continue
+		}
+
+		for _, role := range roles {
+			if role.Code == entity.RoleAdmin {
+				hasAdmin = true
+				break
+			}
+		}
+		if hasAdmin {
+			break
+		}
+	}
+
+	// 如果已存在管理员用户，则不需要创建
+	if hasAdmin {
+		return nil
+	}
+
+	// 创建管理员用户
+	adminReq := &dto.UserRegisterRequest{
+		Email:    "admin@x.com",
+		Password: "admin123",
+		Name:     "Admin",
+	}
+
+	admin, err := s.Register(ctx, adminReq)
+	if err != nil {
+		return fmt.Errorf("创建管理员用户失败: %w", err)
+	}
+
+	// 分配管理员角色
+	err = s.AssignRoles(ctx, admin.ID, []uint{adminRole.ID})
+	if err != nil {
+		return fmt.Errorf("分配管理员角色失败: %w", err)
+	}
+
+	return nil
 }

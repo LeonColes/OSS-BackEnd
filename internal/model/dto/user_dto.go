@@ -4,15 +4,15 @@ import "time"
 
 // UserRegisterRequest 用户注册请求
 type UserRegisterRequest struct {
-	Email    string `json:"email" binding:"required,email" example:"user@example.com"`      // 用户邮箱
-	Password string `json:"password" binding:"required,min=6,max=20" example:"password123"` // 密码
-	Name     string `json:"name" binding:"required" example:"张三"`                           // 用户姓名
+	Email    string `json:"email" binding:"required,email" example:"user@x.com"`       // 用户邮箱
+	Password string `json:"password" binding:"required,min=6,max=20" example:"123456"` // 密码
+	Name     string `json:"name" binding:"required" example:"user"`                    // 用户姓名
 }
 
 // UserLoginRequest 用户登录请求
 type UserLoginRequest struct {
-	Email    string `json:"email" binding:"required,email" example:"user@example.com"` // 用户邮箱
-	Password string `json:"password" binding:"required" example:"password123"`         // 密码
+	Email    string `json:"email" binding:"required,email" example:"user@x.com"` // 用户邮箱
+	Password string `json:"password" binding:"required" example:"123456"`        // 密码
 }
 
 // UserUpdateRequest 用户信息更新请求

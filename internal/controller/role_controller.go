@@ -13,19 +13,19 @@ import (
 
 // RoleController 角色控制器
 type RoleController struct {
-	roleService service.RoleService
+	authService service.AuthService
 }
 
 // NewRoleController 创建角色控制器
-func NewRoleController(roleService service.RoleService) *RoleController {
+func NewRoleController(authService service.AuthService) *RoleController {
 	return &RoleController{
-		roleService: roleService,
+		authService: authService,
 	}
 }
 
 // CreateRole 创建角色
 // @Summary 创建角色
-// @Description 创建一个新角色
+// @Description 创建一个新角色（需要ADMIN或GROUP_ADMIN权限）
 // @Tags 角色管理
 // @Accept json
 // @Produce json
@@ -36,6 +36,7 @@ func NewRoleController(roleService service.RoleService) *RoleController {
 // @Failure 401 {object} common.Response "未授权"
 // @Failure 500 {object} common.Response "内部服务器错误"
 // @Router /api/oss/role/create [post]
+// @Security ApiKeyAuth
 func (c *RoleController) CreateRole(ctx *gin.Context) {
 	var req dto.RoleCreateRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
@@ -51,7 +52,7 @@ func (c *RoleController) CreateRole(ctx *gin.Context) {
 	}
 	createdBy := uint(userIDValue.(uint64))
 
-	err := c.roleService.CreateRole(ctx, &req, createdBy)
+	err := c.authService.CreateRoleFromDTO(ctx, &req, createdBy)
 	if err != nil {
 		ctx.JSON(http.StatusBadRequest, common.ErrorResponse(err.Error()))
 		return
@@ -62,7 +63,7 @@ func (c *RoleController) CreateRole(ctx *gin.Context) {
 
 // UpdateRole 更新角色
 // @Summary 更新角色
-// @Description 更新角色信息
+// @Description 更新角色信息（需要ADMIN或GROUP_ADMIN权限）
 // @Tags 角色管理
 // @Accept json
 // @Produce json
@@ -73,6 +74,7 @@ func (c *RoleController) CreateRole(ctx *gin.Context) {
 // @Failure 401 {object} common.Response "未授权"
 // @Failure 500 {object} common.Response "内部服务器错误"
 // @Router /api/oss/role/update [post]
+// @Security ApiKeyAuth
 func (c *RoleController) UpdateRole(ctx *gin.Context) {
 	var req dto.RoleUpdateRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
@@ -88,7 +90,7 @@ func (c *RoleController) UpdateRole(ctx *gin.Context) {
 	}
 	updatedBy := uint(userIDValue.(uint64))
 
-	err := c.roleService.UpdateRole(ctx, &req, updatedBy)
+	err := c.authService.UpdateRoleFromDTO(ctx, &req, updatedBy)
 	if err != nil {
 		ctx.JSON(http.StatusBadRequest, common.ErrorResponse(err.Error()))
 		return
@@ -99,7 +101,7 @@ func (c *RoleController) UpdateRole(ctx *gin.Context) {
 
 // DeleteRole 删除角色
 // @Summary 删除角色
-// @Description 删除指定ID的角色
+// @Description 删除指定ID的角色（需要ADMIN或GROUP_ADMIN权限）
 // @Tags 角色管理
 // @Accept json
 // @Produce json
@@ -110,6 +112,7 @@ func (c *RoleController) UpdateRole(ctx *gin.Context) {
 // @Failure 401 {object} common.Response "未授权"
 // @Failure 500 {object} common.Response "内部服务器错误"
 // @Router /api/oss/role/delete/{id} [get]
+// @Security ApiKeyAuth
 func (c *RoleController) DeleteRole(ctx *gin.Context) {
 	idStr := ctx.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
@@ -118,7 +121,7 @@ func (c *RoleController) DeleteRole(ctx *gin.Context) {
 		return
 	}
 
-	err = c.roleService.DeleteRole(ctx, uint(id))
+	err = c.authService.DeleteRole(ctx, uint(id))
 	if err != nil {
 		ctx.JSON(http.StatusBadRequest, common.ErrorResponse(err.Error()))
 		return
@@ -129,7 +132,7 @@ func (c *RoleController) DeleteRole(ctx *gin.Context) {
 
 // GetRoleByID 根据ID获取角色
 // @Summary 获取角色详情
-// @Description 根据ID获取角色详情
+// @Description 根据ID获取角色详情（需要ADMIN或GROUP_ADMIN权限）
 // @Tags 角色管理
 // @Accept json
 // @Produce json
@@ -140,6 +143,7 @@ func (c *RoleController) DeleteRole(ctx *gin.Context) {
 // @Failure 401 {object} common.Response "未授权"
 // @Failure 500 {object} common.Response "内部服务器错误"
 // @Router /api/oss/role/detail/{id} [get]
+// @Security ApiKeyAuth
 func (c *RoleController) GetRoleByID(ctx *gin.Context) {
 	idStr := ctx.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
@@ -148,7 +152,7 @@ func (c *RoleController) GetRoleByID(ctx *gin.Context) {
 		return
 	}
 
-	role, err := c.roleService.GetRoleByID(ctx, uint(id))
+	role, err := c.authService.GetRoleByID(ctx, uint(id))
 	if err != nil {
 		ctx.JSON(http.StatusBadRequest, common.ErrorResponse(err.Error()))
 		return
@@ -159,7 +163,7 @@ func (c *RoleController) GetRoleByID(ctx *gin.Context) {
 
 // ListRoles 获取角色列表
 // @Summary 获取角色列表
-// @Description 根据条件获取角色列表
+// @Description 根据条件获取角色列表（需要ADMIN或GROUP_ADMIN权限）
 // @Tags 角色管理
 // @Accept json
 // @Produce json
@@ -173,6 +177,7 @@ func (c *RoleController) GetRoleByID(ctx *gin.Context) {
 // @Failure 401 {object} common.Response "未授权"
 // @Failure 500 {object} common.Response "内部服务器错误"
 // @Router /api/oss/role/list [get]
+// @Security ApiKeyAuth
 func (c *RoleController) ListRoles(ctx *gin.Context) {
 	var req dto.RoleListRequest
 	if err := ctx.ShouldBindQuery(&req); err != nil {
@@ -180,7 +185,7 @@ func (c *RoleController) ListRoles(ctx *gin.Context) {
 		return
 	}
 
-	roles, err := c.roleService.ListRoles(ctx, &req)
+	roles, err := c.authService.ListRoles(ctx, &req)
 	if err != nil {
 		ctx.JSON(http.StatusBadRequest, common.ErrorResponse(err.Error()))
 		return
