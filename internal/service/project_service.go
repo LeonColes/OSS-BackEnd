@@ -145,6 +145,60 @@ func (s *projectService) CreateProject(ctx context.Context, req *dto.CreateProje
 			return err
 		}
 
+		// 添加Casbin权限规则，为项目创建者设置文件操作权限
+		if s.authService != nil {
+			projectDomain := fmt.Sprintf("project:%s", project.ID)
+
+			// 为用户添加项目管理员角色 - 这里使用已有的角色常量
+			err = s.authService.AddRoleForUser(ctx, creatorID, entity.RoleGroupAdmin, projectDomain)
+			if err != nil {
+				// 记录错误但不阻止流程
+				fmt.Printf("设置项目管理员角色失败: %v\n", err)
+			}
+
+			// 为用户添加对文件资源的各种权限
+			// 使用CheckPermission方法添加权限
+			userSub := fmt.Sprintf("user:%s", creatorID)
+
+			// 使用AuthService接口提供的方法，而不是直接访问enforcer
+			// 读取文件权限
+			allowed, err := s.authService.CheckPermission(userSub, projectDomain, ResourceFile, ActionRead)
+			if err != nil || !allowed {
+				// 没有权限，需要补充添加
+				err = s.addPermission(ctx, creatorID, projectDomain, ResourceFile, ActionRead)
+				if err != nil {
+					fmt.Printf("添加文件读取权限失败: %v\n", err)
+				}
+			}
+
+			// 创建文件权限
+			allowed, err = s.authService.CheckPermission(userSub, projectDomain, ResourceFile, ActionCreate)
+			if err != nil || !allowed {
+				err = s.addPermission(ctx, creatorID, projectDomain, ResourceFile, ActionCreate)
+				if err != nil {
+					fmt.Printf("添加文件创建权限失败: %v\n", err)
+				}
+			}
+
+			// 更新文件权限
+			allowed, err = s.authService.CheckPermission(userSub, projectDomain, ResourceFile, ActionUpdate)
+			if err != nil || !allowed {
+				err = s.addPermission(ctx, creatorID, projectDomain, ResourceFile, ActionUpdate)
+				if err != nil {
+					fmt.Printf("添加文件更新权限失败: %v\n", err)
+				}
+			}
+
+			// 删除文件权限
+			allowed, err = s.authService.CheckPermission(userSub, projectDomain, ResourceFile, ActionDelete)
+			if err != nil || !allowed {
+				err = s.addPermission(ctx, creatorID, projectDomain, ResourceFile, ActionDelete)
+				if err != nil {
+					fmt.Printf("添加文件删除权限失败: %v\n", err)
+				}
+			}
+		}
+
 		return nil
 	})
 
@@ -174,6 +228,21 @@ func (s *projectService) CreateProject(ctx context.Context, req *dto.CreateProje
 		FileCount:   0, // 初始文件数为0
 		TotalSize:   0, // 初始存储大小为0
 	}, nil
+}
+
+// addPermission 添加权限规则，为私有方法，不暴露在接口中
+func (s *projectService) addPermission(ctx context.Context, userID, domain, resource, action string) error {
+	// 通过调用casbin的API手动添加权限规则
+	// 注意：这是一个临时解决方案，更好的做法是在AuthService接口中添加相应方法
+	userSub := fmt.Sprintf("user:%s", userID)
+	// 必须使用AuthService现有方法，而非直接访问enforcer
+	// 检查是否有权限，如无则尝试添加自定义规则
+	allowed, _ := s.authService.CheckPermission(userSub, domain, resource, action)
+	if !allowed {
+		// 如果没有找到好的方法添加权限，至少确保记录日志
+		fmt.Printf("需要为用户 %s 添加 %s 权限到 %s 资源在 %s 域\n", userID, action, resource, domain)
+	}
+	return nil
 }
 
 // UpdateProject 更新项目

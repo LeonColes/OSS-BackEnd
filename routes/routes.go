@@ -54,7 +54,7 @@ func SetupRouter(r *gin.Engine, db interface{}, enforcer *casbin.Enforcer) {
 	registerUserRoutes(apiGroup, gormDB, jwtMiddleware, authMiddleware, authSvc)
 
 	// 注册群组相关路由 (AuthMiddleware 需要 Enforcer)
-	registerGroupRoutes(apiGroup, userRepo, roleRepo, groupRepo, jwtMiddleware, authMiddleware)
+	registerGroupRoutes(apiGroup, userRepo, roleRepo, groupRepo, jwtMiddleware, authMiddleware, authSvc)
 
 	// 注册项目相关路由 (AuthService 和 AuthMiddleware 需要 Enforcer)
 	registerProjectRoutes(apiGroup, gormDB, jwtMiddleware, authSvc, authMiddleware)
@@ -140,9 +140,10 @@ func registerGroupRoutes(
 	groupRepo repository.GroupRepository,
 	jwtMiddleware *middleware.JWTAuthMiddleware,
 	authMiddleware *middleware.AuthMiddleware,
+	authService service.AuthService,
 ) {
 	// 创建依赖
-	groupService := service.NewGroupService(groupRepo, userRepo, roleRepo)
+	groupService := service.NewGroupService(groupRepo, userRepo, roleRepo, authService)
 	groupController := controller.NewGroupController(groupService)
 
 	// 群组相关路由

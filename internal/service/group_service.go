@@ -37,17 +37,24 @@ type GroupService interface {
 
 // groupService 群组服务实现
 type groupService struct {
-	groupRepo repository.GroupRepository
-	userRepo  repository.UserRepository
-	roleRepo  repository.RoleRepository
+	groupRepo   repository.GroupRepository
+	userRepo    repository.UserRepository
+	roleRepo    repository.RoleRepository
+	authService AuthService
 }
 
 // NewGroupService 创建群组服务
-func NewGroupService(groupRepo repository.GroupRepository, userRepo repository.UserRepository, roleRepo repository.RoleRepository) GroupService {
+func NewGroupService(
+	groupRepo repository.GroupRepository,
+	userRepo repository.UserRepository,
+	roleRepo repository.RoleRepository,
+	authService AuthService,
+) GroupService {
 	return &groupService{
-		groupRepo: groupRepo,
-		userRepo:  userRepo,
-		roleRepo:  roleRepo,
+		groupRepo:   groupRepo,
+		userRepo:    userRepo,
+		roleRepo:    roleRepo,
+		authService: authService,
 	}
 }
 
@@ -94,7 +101,23 @@ func (s *groupService) CreateGroup(ctx context.Context, req *dto.GroupCreateRequ
 		UpdatedAt: time.Now(),
 	}
 
-	return s.groupRepo.AddMember(ctx, member)
+	err = s.groupRepo.AddMember(ctx, member)
+	if err != nil {
+		return err
+	}
+
+	// 将创建者添加到Casbin中的GROUP_ADMIN角色
+	if s.authService != nil {
+		groupDomain := fmt.Sprintf("group:%s", group.ID)
+		err = s.authService.AddRoleForUser(ctx, creatorID, entity.RoleGroupAdmin, groupDomain)
+		if err != nil {
+			// 记录错误但不阻止流程
+			// 可以考虑添加日志记录
+			fmt.Printf("设置Casbin角色失败: %v\n", err)
+		}
+	}
+
+	return nil
 }
 
 // UpdateGroup 更新群组

@@ -57,7 +57,23 @@ func (c *GroupController) CreateGroup(ctx *gin.Context) {
 		return
 	}
 
-	ctx.JSON(http.StatusOK, common.SuccessResponse(nil))
+	// 获取创建的群组信息并返回
+	groups, err := c.groupService.GetUserGroups(ctx, userID)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, common.ErrorResponse("群组创建成功，但获取群组信息失败"))
+		return
+	}
+
+	// 查找刚创建的群组（通常是最新的一个）
+	var newGroup *dto.GroupResponse
+	for _, g := range groups {
+		if g.Name == req.Name {
+			newGroup = &g
+			break
+		}
+	}
+
+	ctx.JSON(http.StatusOK, common.SuccessResponse(newGroup))
 }
 
 // UpdateGroup 更新群组

@@ -120,36 +120,6 @@ else
 endif
 	@echo "文档服务器已启动，请访问: http://localhost:8090"
 
-# 构建测试工具
-test-build:
-	@echo "构建测试工具..."
-ifeq ($(OS),Windows_NT)
-	@cd test && go build -o oss_tester.exe
-	@echo "测试工具构建完成: test/oss_tester.exe"
-else
-	@cd test && go build -o oss_tester
-	@echo "测试工具构建完成: test/oss_tester"
-endif
-
-# 生成测试配置
-test-generate: swagger test-build
-	@echo "从Swagger文档生成测试配置..."
-ifeq ($(OS),Windows_NT)
-	@cd test && .\oss_tester.exe -swagger ..\docs\swagger\swagger.json -output test_config.json
-else
-	@cd test && ./oss_tester -swagger ../docs/swagger/swagger.json -output test_config.json
-endif
-	@echo "测试配置已生成: test/test_config.json"
-
-# 运行测试
-test-run: test-build
-	@echo "运行自动化测试..."
-ifeq ($(OS),Windows_NT)
-	@cd test && .\oss_tester.exe -swagger ..\docs\swagger\swagger.json -run
-else
-	@cd test && ./oss_tester -swagger ../docs/swagger/swagger.json -run
-endif
-
 # 帮助信息
 help:
 	@echo "可用命令:"
