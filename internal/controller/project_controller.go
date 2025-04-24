@@ -24,7 +24,7 @@ func NewProjectController(projectService service.ProjectService) *ProjectControl
 
 // CreateProject 创建项目
 // @Summary 创建项目
-// @Description 创建一个新项目
+// @Description 创建一个新项目（需要组管理员或系统管理员权限）
 // @Tags 项目管理
 // @Accept json
 // @Produce json
@@ -64,7 +64,7 @@ func (c *ProjectController) CreateProject(ctx *gin.Context) {
 
 // UpdateProject 更新项目
 // @Summary 更新项目
-// @Description 更新项目信息
+// @Description 更新项目信息（需要项目管理员权限）
 // @Tags 项目管理
 // @Accept json
 // @Produce json
@@ -268,7 +268,7 @@ func (c *ProjectController) DeleteProject(ctx *gin.Context) {
 
 // SetPermission 设置项目成员权限
 // @Summary 设置项目成员权限
-// @Description 为项目成员设置权限
+// @Description 为项目成员设置权限（需要项目管理员权限）
 // @Tags 项目管理
 // @Accept json
 // @Produce json
@@ -308,7 +308,7 @@ func (c *ProjectController) SetPermission(ctx *gin.Context) {
 
 // RemovePermission 移除项目成员权限
 // @Summary 移除项目成员权限
-// @Description 移除项目成员的权限
+// @Description 移除项目成员的权限（需要项目管理员权限）
 // @Tags 项目管理
 // @Accept json
 // @Produce json

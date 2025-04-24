@@ -13,6 +13,11 @@ import (
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 
+	// 导入Swagger文档
+	_ "oss-backend/docs/swagger"
+	// 导入所有控制器以确保扫描到API注释
+	_ "oss-backend/internal/controller"
+
 	"oss-backend/internal/model/entity"
 	"oss-backend/internal/repository"
 	"oss-backend/internal/service"
@@ -34,6 +39,34 @@ import (
 // @host localhost:8080
 // @BasePath /
 // @schemes http https
+
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description 在请求头中添加Bearer令牌，格式为: Bearer {token}
+
+// @Security BearerAuth
+
+// @Tag.name 系统管理员API
+// @Tag.description 需要系统管理员权限的接口
+
+// @Tag.name 用户模块
+// @Tag.description 用户相关的接口
+
+// @Tag.name 角色管理
+// @Tag.description 角色相关的接口
+
+// @Tag.name 群组管理
+// @Tag.description 群组相关的接口
+
+// @Tag.name 项目管理
+// @Tag.description 项目相关的接口
+
+// @Tag.name 文件管理
+// @Tag.description 文件相关的接口
+
+// @Tag.name 文件分享
+// @Tag.description 文件分享相关的接口
 
 func main() {
 	// 初始化配置

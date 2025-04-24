@@ -1,7 +1,8 @@
 package routes
 
 import (
-	_ "oss-backend/docs/swagger" // 统一Swagger文档导入路径
+	_ "oss-backend/docs/swagger"        // 统一Swagger文档导入路径
+	_ "oss-backend/internal/controller" // 导入控制器包以确保Swagger正确扫描
 
 	"github.com/casbin/casbin/v2"
 	"github.com/gin-gonic/gin"

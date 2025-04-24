@@ -217,8 +217,8 @@ func (c *UserController) ListUsers(ctx *gin.Context) {
 
 // UpdateUserStatus 更新用户状态
 // @Summary 更新用户状态
-// @Description 更新指定用户的状态
-// @Tags 用户模块
+// @Description 更新指定用户的状态（需要系统管理员权限）
+// @Tags 系统管理员API
 // @Accept json
 // @Produce json
 // @Param Authorization header string true "Bearer {{token}}"
@@ -280,8 +280,8 @@ func (c *UserController) GetUserRoles(ctx *gin.Context) {
 
 // AssignRoles 分配用户角色
 // @Summary 分配用户角色
-// @Description 为指定用户分配角色
-// @Tags 用户模块
+// @Description 为指定用户分配角色（需要系统管理员权限）
+// @Tags 系统管理员API
 // @Accept json
 // @Produce json
 // @Param Authorization header string true "Bearer {{token}}"
@@ -315,8 +315,8 @@ func (c *UserController) AssignRoles(ctx *gin.Context) {
 
 // RemoveRoles 移除用户角色
 // @Summary 移除用户角色
-// @Description 移除指定用户的角色
-// @Tags 用户模块
+// @Description 移除指定用户的角色（需要系统管理员权限）
+// @Tags 系统管理员API
 // @Accept json
 // @Produce json
 // @Param Authorization header string true "Bearer {{token}}"

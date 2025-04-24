@@ -26,7 +26,7 @@ func NewRoleController(authService service.AuthService) *RoleController {
 // CreateRole 创建角色
 // @Summary 创建角色
 // @Description 创建一个新角色（需要ADMIN或GROUP_ADMIN权限）
-// @Tags 角色管理
+// @Tags 系统管理员API
 // @Accept json
 // @Produce json
 // @Param Authorization header string true "Bearer {{token}}"
@@ -64,7 +64,7 @@ func (c *RoleController) CreateRole(ctx *gin.Context) {
 // UpdateRole 更新角色
 // @Summary 更新角色
 // @Description 更新角色信息（需要ADMIN或GROUP_ADMIN权限）
-// @Tags 角色管理
+// @Tags 系统管理员API
 // @Accept json
 // @Produce json
 // @Param Authorization header string true "Bearer {{token}}"
@@ -102,7 +102,7 @@ func (c *RoleController) UpdateRole(ctx *gin.Context) {
 // DeleteRole 删除角色
 // @Summary 删除角色
 // @Description 删除指定ID的角色（需要ADMIN或GROUP_ADMIN权限）
-// @Tags 角色管理
+// @Tags 系统管理员API
 // @Accept json
 // @Produce json
 // @Param Authorization header string true "Bearer {{token}}"
@@ -133,7 +133,7 @@ func (c *RoleController) DeleteRole(ctx *gin.Context) {
 // GetRoleByID 根据ID获取角色
 // @Summary 获取角色详情
 // @Description 根据ID获取角色详情（需要ADMIN或GROUP_ADMIN权限）
-// @Tags 角色管理
+// @Tags 系统管理员API
 // @Accept json
 // @Produce json
 // @Param Authorization header string true "Bearer {{token}}"
@@ -164,7 +164,7 @@ func (c *RoleController) GetRoleByID(ctx *gin.Context) {
 // ListRoles 获取角色列表
 // @Summary 获取角色列表
 // @Description 根据条件获取角色列表（需要ADMIN或GROUP_ADMIN权限）
-// @Tags 角色管理
+// @Tags 系统管理员API
 // @Accept json
 // @Produce json
 // @Param Authorization header string true "Bearer {{token}}"

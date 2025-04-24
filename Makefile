@@ -79,10 +79,14 @@ swagger:
 	@echo "生成Swagger文档..."
 ifeq ($(OS),Windows_NT)
 	@go install github.com/swaggo/swag/cmd/swag@latest
-	@swag init -g main.go -o docs/swagger
+	@swag init -g main.go -o docs/swagger --parseDependency --parseInternal --parseVendor
+	@echo "Swagger文档已生成，可在运行应用后访问: http://localhost:8080/swagger/index.html"
+	@echo "可在Swagger UI或APIfox中按标签筛选系统管理员API（虽然在终端查看时可能会有中文编码问题）"
 else
 	@go install github.com/swaggo/swag/cmd/swag@latest
-	@$(shell go env GOPATH)/bin/swag init -g main.go -o docs/swagger
+	@$(shell go env GOPATH)/bin/swag init -g main.go -o docs/swagger --parseDependency --parseInternal --parseVendor
+	@echo "Swagger文档已生成，可在运行应用后访问: http://localhost:8080/swagger/index.html"
+	@echo "可在Swagger UI或APIfox中按标签筛选系统管理员API（虽然在终端查看时可能会有中文编码问题）"
 endif
 
 # 生成API文档（基于Swagger）
