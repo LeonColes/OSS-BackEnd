@@ -16,7 +16,7 @@ var jwtSecret = []byte("oss-backend-secret-key")
 
 // JWTClaims JWT声明
 type JWTClaims struct {
-	UserID uint64 `json:"user_id"`
+	UserID string `json:"user_id"`
 	Email  string `json:"email"`
 	jwt.RegisteredClaims
 }

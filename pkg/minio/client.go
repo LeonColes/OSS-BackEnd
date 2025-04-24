@@ -233,10 +233,17 @@ func (c *Client) GeneratePreSignedURL(ctx context.Context, bucketName, objectNam
 	return presignedURL.String(), nil
 }
 
+// GetPublicDownloadURL 获取公共下载URL，使用7天的过期时间
+func (c *Client) GetPublicDownloadURL(ctx context.Context, bucketName, objectName string) (string, error) {
+	// 使用7天过期时间
+	expiry := time.Hour * 24 * 7
+	return c.GeneratePreSignedURL(ctx, bucketName, objectName, expiry)
+}
+
 // GetObjectName 生成对象名称
-func GetObjectName(projectID uint64, filePath, fileName string) string {
+func GetObjectName(projectID string, filePath, fileName string) string {
 	// 构建对象名称
-	objectPath := filepath.Join(fmt.Sprintf("project_%d", projectID), filePath)
+	objectPath := filepath.Join(fmt.Sprintf("project_%s", projectID), filePath)
 	objectPath = filepath.ToSlash(objectPath) // 转换为UNIX路径格式
 
 	// 确保路径以/开头，不以/结尾

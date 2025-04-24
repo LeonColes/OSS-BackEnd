@@ -2,7 +2,7 @@ package entity
 
 // CasbinRule Casbin规则实体
 type CasbinRule struct {
-	ID    uint   `gorm:"primaryKey;autoIncrement"`
+	ID    string `gorm:"primaryKey;autoIncrement"`
 	Ptype string `gorm:"size:100;uniqueIndex:unique_policy;comment:策略类型"`
 	V0    string `gorm:"size:100;uniqueIndex:unique_policy;comment:角色/用户"`
 	V1    string `gorm:"size:100;uniqueIndex:unique_policy;comment:域/租户"`

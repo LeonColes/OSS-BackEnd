@@ -141,18 +141,19 @@ feat(auth): 添加OAuth2认证支持
 项目采用清晰的分层架构，请遵循现有的项目结构:
 
 ```
-├── api/            # API接口定义
-├── cmd/            # 主程序入口
-├── configs/        # 配置文件
-├── docs/           # 文档
-├── internal/       # 内部代码，不对外暴露
-│   ├── app/        # 应用层
-│   ├── domain/     # 领域层
-│   ├── infra/      # 基础设施层
-│   └── interfaces/ # 接口层
-├── pkg/            # 可复用的公共包
-├── scripts/        # 脚本文件
-└── test/           # 测试相关
+├── configs/         # 配置文件
+├── docs/            # 文档
+├── internal/        # 内部代码，不对外暴露
+│   ├── contronller/ # 请求响应层
+│   ├── middleware/  # 中间件
+│   ├── model/       # 数据模型
+│   ├── repository/  # 处理数据访问
+│   ├── serviice/    # 业务逻辑层
+│   └── utiils/      # 工具类
+├── pkg/             # 可复用的公共包
+│   routes/          # 路由层
+├── scripts/         # 脚本文件
+└── test/            # 测试相关
 ```
 
 开发新功能时，请遵循现有的分层和模块划分。

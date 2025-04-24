@@ -7,6 +7,7 @@ import (
 	"gorm.io/gorm"
 
 	"oss-backend/internal/model/entity"
+	"oss-backend/internal/utils"
 )
 
 // UserRepository 用户仓库接口
@@ -16,23 +17,23 @@ type UserRepository interface {
 	// Update 更新用户
 	Update(ctx context.Context, user *entity.User) error
 	// GetByID 根据ID获取用户
-	GetByID(ctx context.Context, id uint64) (*entity.User, error)
+	GetByID(ctx context.Context, id string) (*entity.User, error)
 	// GetByEmail 根据邮箱获取用户
 	GetByEmail(ctx context.Context, email string) (*entity.User, error)
 	// List 获取用户列表
 	List(ctx context.Context, email, name string, status, page, size int) ([]*entity.User, int64, error)
 	// UpdatePassword 更新密码
-	UpdatePassword(ctx context.Context, id uint64, passwordHash string) error
+	UpdatePassword(ctx context.Context, id string, passwordHash string) error
 	// UpdateStatus 更新状态
-	UpdateStatus(ctx context.Context, id uint64, status int) error
+	UpdateStatus(ctx context.Context, id string, status int) error
 	// UpdateLastLogin 更新最后登录信息
-	UpdateLastLogin(ctx context.Context, id uint64, ip string) error
+	UpdateLastLogin(ctx context.Context, id string, ip string) error
 	// GetUserRoles 获取用户角色
-	GetUserRoles(ctx context.Context, userID uint64) ([]entity.Role, error)
+	GetUserRoles(ctx context.Context, userID string) ([]entity.Role, error)
 	// AssignRoles 为用户分配角色
-	AssignRoles(ctx context.Context, userID uint64, roleIDs []uint) error
+	AssignRoles(ctx context.Context, userID string, roleIDs []uint) error
 	// RemoveRoles 移除用户角色
-	RemoveRoles(ctx context.Context, userID uint64, roleIDs []uint) error
+	RemoveRoles(ctx context.Context, userID string, roleIDs []uint) error
 }
 
 // userRepository 用户仓库实现
@@ -49,6 +50,9 @@ func NewUserRepository(db *gorm.DB) UserRepository {
 
 // Create 创建用户
 func (r *userRepository) Create(ctx context.Context, user *entity.User) error {
+	if user.ID == "" {
+		user.ID = utils.GenerateUserID()
+	}
 	return r.db.WithContext(ctx).Create(user).Error
 }
 
@@ -63,7 +67,7 @@ func (r *userRepository) Update(ctx context.Context, user *entity.User) error {
 }
 
 // GetByID 根据ID获取用户
-func (r *userRepository) GetByID(ctx context.Context, id uint64) (*entity.User, error) {
+func (r *userRepository) GetByID(ctx context.Context, id string) (*entity.User, error) {
 	var user entity.User
 	err := r.db.WithContext(ctx).Where("id = ?", id).First(&user).Error
 	if err != nil {
@@ -111,7 +115,7 @@ func (r *userRepository) List(ctx context.Context, email, name string, status, p
 		db = db.Offset(offset).Limit(size)
 	}
 
-	err = db.Order("id DESC").Find(&users).Error
+	err = db.Order("created_at DESC").Find(&users).Error
 	if err != nil {
 		return nil, 0, err
 	}
@@ -120,19 +124,19 @@ func (r *userRepository) List(ctx context.Context, email, name string, status, p
 }
 
 // UpdatePassword 更新密码
-func (r *userRepository) UpdatePassword(ctx context.Context, id uint64, passwordHash string) error {
+func (r *userRepository) UpdatePassword(ctx context.Context, id string, passwordHash string) error {
 	return r.db.WithContext(ctx).Model(&entity.User{}).Where("id = ?", id).
 		Update("password_hash", passwordHash).Error
 }
 
 // UpdateStatus 更新状态
-func (r *userRepository) UpdateStatus(ctx context.Context, id uint64, status int) error {
+func (r *userRepository) UpdateStatus(ctx context.Context, id string, status int) error {
 	return r.db.WithContext(ctx).Model(&entity.User{}).Where("id = ?", id).
 		Update("status", status).Error
 }
 
 // UpdateLastLogin 更新最后登录信息
-func (r *userRepository) UpdateLastLogin(ctx context.Context, id uint64, ip string) error {
+func (r *userRepository) UpdateLastLogin(ctx context.Context, id string, ip string) error {
 	now := time.Now()
 	return r.db.WithContext(ctx).Model(&entity.User{}).Where("id = ?", id).
 		Updates(map[string]interface{}{
@@ -142,7 +146,7 @@ func (r *userRepository) UpdateLastLogin(ctx context.Context, id uint64, ip stri
 }
 
 // GetUserRoles 获取用户角色
-func (r *userRepository) GetUserRoles(ctx context.Context, userID uint64) ([]entity.Role, error) {
+func (r *userRepository) GetUserRoles(ctx context.Context, userID string) ([]entity.Role, error) {
 	var roles []entity.Role
 	err := r.db.WithContext(ctx).
 		Joins("JOIN user_roles ON user_roles.role_id = roles.id").
@@ -152,12 +156,12 @@ func (r *userRepository) GetUserRoles(ctx context.Context, userID uint64) ([]ent
 }
 
 // AssignRoles 为用户分配角色
-func (r *userRepository) AssignRoles(ctx context.Context, userID uint64, roleIDs []uint) error {
+func (r *userRepository) AssignRoles(ctx context.Context, userID string, roleIDs []uint) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// 创建用户角色关联
 		for _, roleID := range roleIDs {
 			userRole := entity.UserRole{
-				UserID: uint(userID),
+				UserID: userID,
 				RoleID: roleID,
 			}
 			// 检查是否已存在
@@ -180,7 +184,7 @@ func (r *userRepository) AssignRoles(ctx context.Context, userID uint64, roleIDs
 }
 
 // RemoveRoles 移除用户角色
-func (r *userRepository) RemoveRoles(ctx context.Context, userID uint64, roleIDs []uint) error {
+func (r *userRepository) RemoveRoles(ctx context.Context, userID string, roleIDs []uint) error {
 	if len(roleIDs) == 0 {
 		return nil
 	}

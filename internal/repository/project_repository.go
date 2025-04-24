@@ -2,46 +2,44 @@ package repository
 
 import (
 	"context"
-	"fmt"
-	"time"
+	"errors"
 
 	"gorm.io/gorm"
 
 	"oss-backend/internal/model/dto"
 	"oss-backend/internal/model/entity"
+	"oss-backend/internal/utils"
 )
 
 // ProjectRepository 项目仓库接口
 type ProjectRepository interface {
-	// 项目基本操作
-	CreateProject(ctx context.Context, project *entity.Project) error
-	UpdateProject(ctx context.Context, project *entity.Project) error
-	GetProjectByID(ctx context.Context, id uint64) (*entity.Project, error)
-	ListProjects(ctx context.Context, query *dto.ProjectQuery) ([]*entity.Project, int64, error)
-	GetUserProjects(ctx context.Context, userID uint64, query *dto.ProjectQuery) ([]*entity.Project, int64, error)
-	DeleteProject(ctx context.Context, id uint64) error
+	// 事务支持
+	WithTx(tx *gorm.DB) ProjectRepository
 
-	// 项目权限操作
-	SetPermission(ctx context.Context, permission *entity.Permission) error
-	RemovePermission(ctx context.Context, projectID, userID uint64) error
-	GetProjectPermission(ctx context.Context, projectID, userID uint64) (*entity.Permission, error)
-	ListProjectUsers(ctx context.Context, projectID uint64) ([]*entity.Permission, error)
+	// 基础CRUD
+	Create(ctx context.Context, project *entity.Project) error
+	GetByID(ctx context.Context, id string) (*entity.Project, error)
+	Update(ctx context.Context, project *entity.Project) error
+	Delete(ctx context.Context, id string) error
 
-	// 检查用户是否拥有项目权限
-	CheckUserProjectRole(ctx context.Context, userID, projectID uint64, roles []string) (bool, error)
+	// 查询方法
+	List(ctx context.Context, req *dto.ProjectListRequest) ([]entity.Project, int64, error)
+	GetByGroupID(ctx context.Context, groupID string) ([]entity.Project, error)
+	GetUserProjects(ctx context.Context, userID string) ([]entity.Project, error)
 
-	// 项目成员管理
-	AddMember(ctx context.Context, member *entity.ProjectMember) error
-	RemoveMember(ctx context.Context, projectID, userID uint64) error
-	UpdateMemberRole(ctx context.Context, projectID, userID uint64, role string) error
-	GetMembers(ctx context.Context, projectID uint64) ([]*entity.ProjectMember, error)
-
-	// 检查用户是否在项目中及其角色
-	CheckUserInProject(ctx context.Context, projectID, userID uint64) (bool, string, error)
-
-	// 项目查询
-	GetByName(ctx context.Context, name string) (*entity.Project, error)
-	GetPublicProjects(ctx context.Context, page, pageSize int) ([]*entity.Project, int64, error)
+	// 权限相关
+	CreateProjectMember(ctx context.Context, member *entity.ProjectMember) error
+	GetProjectMember(ctx context.Context, projectID, userID string) (*entity.ProjectMember, error)
+	UpdateProjectMember(ctx context.Context, member *entity.ProjectMember) error
+	RemoveProjectMember(ctx context.Context, projectID, userID string) error
+	ListProjectMembers(ctx context.Context, projectID string, page, size int) ([]entity.ProjectMember, int64, error)
+	CheckUserProjectRole(ctx context.Context, userID, projectID string, role string) (bool, error)
+	CheckUserInProject(ctx context.Context, userID, projectID string) (bool, error)
+	AddProjectPermission(ctx context.Context, permission *entity.Permission) error
+	GetProjectPermission(ctx context.Context, projectID, userID string) (*entity.Permission, error)
+	UpdateProjectPermission(ctx context.Context, permission *entity.Permission) error
+	RemoveProjectPermission(ctx context.Context, projectID, userID string) error
+	ListProjectPermissions(ctx context.Context, projectID string, page, size int) ([]entity.Permission, int64, error)
 }
 
 // projectRepository 项目仓库实现
@@ -51,305 +49,255 @@ type projectRepository struct {
 
 // NewProjectRepository 创建项目仓库
 func NewProjectRepository(db *gorm.DB) ProjectRepository {
-	return &projectRepository{db: db}
+	return &projectRepository{
+		db: db,
+	}
 }
 
-// CreateProject 创建项目
-func (r *projectRepository) CreateProject(ctx context.Context, project *entity.Project) error {
+// Create 创建项目
+func (r *projectRepository) Create(ctx context.Context, project *entity.Project) error {
+	if project.ID == "" {
+		project.ID = utils.GenerateProjectID()
+	}
 	return r.db.WithContext(ctx).Create(project).Error
 }
 
-// UpdateProject 更新项目
-func (r *projectRepository) UpdateProject(ctx context.Context, project *entity.Project) error {
-	return r.db.WithContext(ctx).Model(&entity.Project{}).Where("id = ?", project.ID).
-		Updates(map[string]interface{}{
-			"name":        project.Name,
-			"description": project.Description,
-			"status":      project.Status,
-			"updated_at":  time.Now(),
-		}).Error
-}
-
-// GetProjectByID 通过ID获取项目
-func (r *projectRepository) GetProjectByID(ctx context.Context, id uint64) (*entity.Project, error) {
+// GetByID 根据ID获取项目
+func (r *projectRepository) GetByID(ctx context.Context, id string) (*entity.Project, error) {
 	var project entity.Project
-	err := r.db.WithContext(ctx).
-		Preload("Group").
-		Preload("Creator").
-		First(&project, id).Error
+	err := r.db.WithContext(ctx).Where("id = ?", id).First(&project).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return &project, nil
 }
 
-// ListProjects 列出项目列表
-func (r *projectRepository) ListProjects(ctx context.Context, query *dto.ProjectQuery) ([]*entity.Project, int64, error) {
-	db := r.db.WithContext(ctx).Model(&entity.Project{})
-
-	// 构建查询条件
-	if query.GroupID > 0 {
-		db = db.Where("group_id = ?", query.GroupID)
-	}
-
-	if query.Status > 0 {
-		db = db.Where("status = ?", query.Status)
-	}
-
-	if query.Keyword != "" {
-		db = db.Where("name LIKE ? OR description LIKE ?",
-			fmt.Sprintf("%%%s%%", query.Keyword),
-			fmt.Sprintf("%%%s%%", query.Keyword))
-	}
-
-	// 获取总数
-	var total int64
-	err := db.Count(&total).Error
-	if err != nil {
-		return nil, 0, err
-	}
-
-	// 分页查询
-	page := query.Page
-	if page <= 0 {
-		page = 1
-	}
-
-	size := query.Size
-	if size <= 0 {
-		size = 10
-	}
-
-	var projects []*entity.Project
-	err = db.Preload("Group").
-		Preload("Creator").
-		Offset((page - 1) * size).
-		Limit(size).
-		Order("created_at DESC").
-		Find(&projects).Error
-
-	return projects, total, err
+// Update 更新项目
+func (r *projectRepository) Update(ctx context.Context, project *entity.Project) error {
+	return r.db.WithContext(ctx).Save(project).Error
 }
 
-// GetUserProjects 获取用户参与的项目
-func (r *projectRepository) GetUserProjects(ctx context.Context, userID uint64, query *dto.ProjectQuery) ([]*entity.Project, int64, error) {
-	db := r.db.WithContext(ctx).Table("projects p").
-		Joins("JOIN permissions pm ON p.id = pm.project_id").
-		Joins("JOIN users u ON pm.user_id = u.id").
-		Where("pm.user_id = ?", userID)
+// Delete 删除项目
+func (r *projectRepository) Delete(ctx context.Context, id string) error {
+	return r.db.WithContext(ctx).Delete(&entity.Project{}, "id = ?", id).Error
+}
 
-	// 构建查询条件
-	if query.GroupID > 0 {
-		db = db.Where("p.group_id = ?", query.GroupID)
-	}
-
-	if query.Status > 0 {
-		db = db.Where("p.status = ?", query.Status)
-	}
-
-	if query.Keyword != "" {
-		db = db.Where("p.name LIKE ? OR p.description LIKE ?",
-			fmt.Sprintf("%%%s%%", query.Keyword),
-			fmt.Sprintf("%%%s%%", query.Keyword))
-	}
-
-	// 获取总数
+// List 获取项目列表
+func (r *projectRepository) List(ctx context.Context, req *dto.ProjectListRequest) ([]entity.Project, int64, error) {
+	var projects []entity.Project
 	var total int64
-	err := db.Count(&total).Error
+
+	query := r.db.WithContext(ctx).Model(&entity.Project{})
+
+	// 条件筛选
+	if req.Name != "" {
+		query = query.Where("name LIKE ?", "%"+req.Name+"%")
+	}
+
+	if req.GroupID != "" {
+		query = query.Where("group_id = ?", req.GroupID)
+	}
+
+	if req.Status > 0 {
+		query = query.Where("status = ?", req.Status)
+	}
+
+	// 计算总数
+	err := query.Count(&total).Error
 	if err != nil {
 		return nil, 0, err
 	}
 
 	// 分页查询
-	page := query.Page
-	if page <= 0 {
-		page = 1
+	if req.Page > 0 && req.PageSize > 0 {
+		offset := (req.Page - 1) * req.PageSize
+		query = query.Offset(offset).Limit(req.PageSize)
 	}
 
-	size := query.Size
-	if size <= 0 {
-		size = 10
+	// 排序
+	if req.SortBy != "" {
+		order := req.SortBy
+		if req.SortOrder == "desc" {
+			order += " DESC"
+		} else {
+			order += " ASC"
+		}
+		query = query.Order(order)
+	} else {
+		query = query.Order("created_at DESC")
 	}
 
-	var projectIDs []uint64
-	err = db.Select("p.id").
-		Offset((page-1)*size).
-		Limit(size).
-		Order("p.created_at DESC").
-		Pluck("p.id", &projectIDs).Error
-
+	// 执行查询
+	err = query.Preload("Group").Find(&projects).Error
 	if err != nil {
 		return nil, 0, err
 	}
 
-	if len(projectIDs) == 0 {
-		return []*entity.Project{}, 0, nil
-	}
+	return projects, total, nil
+}
 
-	var projects []*entity.Project
-	err = r.db.WithContext(ctx).
+// GetByGroupID 根据群组ID获取项目
+func (r *projectRepository) GetByGroupID(ctx context.Context, groupID string) ([]entity.Project, error) {
+	var projects []entity.Project
+	err := r.db.WithContext(ctx).Where("group_id = ?", groupID).Find(&projects).Error
+	return projects, err
+}
+
+// GetUserProjects 获取用户的项目
+func (r *projectRepository) GetUserProjects(ctx context.Context, userID string) ([]entity.Project, error) {
+	var projects []entity.Project
+	err := r.db.WithContext(ctx).
+		Joins("JOIN project_members ON project_members.project_id = projects.id").
+		Where("project_members.user_id = ?", userID).
 		Preload("Group").
-		Preload("Creator").
-		Where("id IN ?", projectIDs).
-		Order("created_at DESC").
 		Find(&projects).Error
-
-	return projects, total, err
+	return projects, err
 }
 
-// DeleteProject 删除项目(逻辑删除)
-func (r *projectRepository) DeleteProject(ctx context.Context, id uint64) error {
-	return r.db.WithContext(ctx).Model(&entity.Project{}).
-		Where("id = ?", id).
-		Updates(map[string]interface{}{
-			"status":     3, // 设置为删除状态
-			"updated_at": time.Now(),
-		}).Error
-}
-
-// SetPermission 设置项目权限
-func (r *projectRepository) SetPermission(ctx context.Context, permission *entity.Permission) error {
-	// 先尝试更新，如果不存在则创建
-	result := r.db.WithContext(ctx).Model(&entity.Permission{}).
-		Where("project_id = ? AND user_id = ?", permission.ProjectID, permission.UserID).
-		Updates(map[string]interface{}{
-			"role":       permission.Role,
-			"expire_at":  permission.ExpireAt,
-			"updated_at": time.Now(),
-		})
-
-	if result.Error != nil {
-		return result.Error
+// CreateProjectMember 添加项目成员
+func (r *projectRepository) CreateProjectMember(ctx context.Context, member *entity.ProjectMember) error {
+	if member.ID == "" {
+		member.ID = utils.GenerateRecordID()
 	}
-
-	if result.RowsAffected == 0 {
-		// 不存在，则创建
-		return r.db.WithContext(ctx).Create(permission).Error
-	}
-
-	return nil
-}
-
-// RemovePermission 移除项目权限
-func (r *projectRepository) RemovePermission(ctx context.Context, projectID, userID uint64) error {
-	return r.db.WithContext(ctx).Where("project_id = ? AND user_id = ?", projectID, userID).
-		Delete(&entity.Permission{}).Error
-}
-
-// GetProjectPermission 获取用户的项目权限
-func (r *projectRepository) GetProjectPermission(ctx context.Context, projectID, userID uint64) (*entity.Permission, error) {
-	var permission entity.Permission
-	err := r.db.WithContext(ctx).
-		Where("project_id = ? AND user_id = ?", projectID, userID).
-		First(&permission).Error
-
-	if err != nil {
-		return nil, err
-	}
-
-	return &permission, nil
-}
-
-// ListProjectUsers 列出项目用户及其权限
-func (r *projectRepository) ListProjectUsers(ctx context.Context, projectID uint64) ([]*entity.Permission, error) {
-	var permissions []*entity.Permission
-	err := r.db.WithContext(ctx).
-		Preload("User").
-		Preload("Granter").
-		Where("project_id = ?", projectID).
-		Find(&permissions).Error
-
-	return permissions, err
-}
-
-// CheckUserProjectRole 检查用户是否拥有项目特定角色
-func (r *projectRepository) CheckUserProjectRole(ctx context.Context, userID, projectID uint64, roles []string) (bool, error) {
-	var count int64
-	query := r.db.WithContext(ctx).Model(&entity.Permission{}).
-		Where("project_id = ? AND user_id = ?", projectID, userID)
-
-	if len(roles) > 0 {
-		query = query.Where("role IN ?", roles)
-	}
-
-	err := query.Count(&count).Error
-	return count > 0, err
-}
-
-// AddMember 添加项目成员
-func (r *projectRepository) AddMember(ctx context.Context, member *entity.ProjectMember) error {
 	return r.db.WithContext(ctx).Create(member).Error
 }
 
-// RemoveMember 移除项目成员
-func (r *projectRepository) RemoveMember(ctx context.Context, projectID, userID uint64) error {
-	return r.db.WithContext(ctx).Where("project_id = ? AND user_id = ?", projectID, userID).
-		Delete(&entity.ProjectMember{}).Error
-}
-
-// UpdateMemberRole 更新成员角色
-func (r *projectRepository) UpdateMemberRole(ctx context.Context, projectID, userID uint64, role string) error {
-	return r.db.WithContext(ctx).Model(&entity.ProjectMember{}).
-		Where("project_id = ? AND user_id = ?", projectID, userID).
-		Update("role", role).Error
-}
-
-// GetMembers 获取项目成员列表
-func (r *projectRepository) GetMembers(ctx context.Context, projectID uint64) ([]*entity.ProjectMember, error) {
-	var members []*entity.ProjectMember
-	err := r.db.WithContext(ctx).Where("project_id = ?", projectID).Find(&members).Error
-	if err != nil {
-		return nil, err
-	}
-	return members, nil
-}
-
-// CheckUserInProject 检查用户是否在项目中及其角色
-func (r *projectRepository) CheckUserInProject(ctx context.Context, projectID, userID uint64) (bool, string, error) {
+// GetProjectMember 获取项目成员
+func (r *projectRepository) GetProjectMember(ctx context.Context, projectID, userID string) (*entity.ProjectMember, error) {
 	var member entity.ProjectMember
-
-	err := r.db.WithContext(ctx).Where("project_id = ? AND user_id = ?", projectID, userID).
-		First(&member).Error
-
+	err := r.db.WithContext(ctx).Where("project_id = ? AND user_id = ?", projectID, userID).First(&member).Error
 	if err != nil {
-		if err.Error() == "record not found" {
-			return false, "", nil
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
 		}
-		return false, "", err
-	}
-
-	return true, member.Role, nil
-}
-
-// GetByName 根据名称获取项目
-func (r *projectRepository) GetByName(ctx context.Context, name string) (*entity.Project, error) {
-	var project entity.Project
-	err := r.db.WithContext(ctx).Where("name = ? AND is_deleted = ?", name, false).First(&project).Error
-	if err != nil {
 		return nil, err
 	}
-	return &project, nil
+	return &member, nil
 }
 
-// GetPublicProjects 获取公开项目列表
-func (r *projectRepository) GetPublicProjects(ctx context.Context, page, pageSize int) ([]*entity.Project, int64, error) {
-	var projects []*entity.Project
-	var count int64
+// UpdateProjectMember 更新项目成员
+func (r *projectRepository) UpdateProjectMember(ctx context.Context, member *entity.ProjectMember) error {
+	return r.db.WithContext(ctx).Save(member).Error
+}
 
-	query := r.db.WithContext(ctx).Where("is_public = ? AND is_deleted = ?", true, false)
+// RemoveProjectMember 移除项目成员
+func (r *projectRepository) RemoveProjectMember(ctx context.Context, projectID, userID string) error {
+	return r.db.WithContext(ctx).Where("project_id = ? AND user_id = ?", projectID, userID).Delete(&entity.ProjectMember{}).Error
+}
+
+// ListProjectMembers 获取项目成员列表
+func (r *projectRepository) ListProjectMembers(ctx context.Context, projectID string, page, size int) ([]entity.ProjectMember, int64, error) {
+	var members []entity.ProjectMember
+	var total int64
+
+	query := r.db.WithContext(ctx).Model(&entity.ProjectMember{}).Where("project_id = ?", projectID)
 
 	// 计算总数
-	err := query.Model(&entity.Project{}).Count(&count).Error
+	err := query.Count(&total).Error
 	if err != nil {
 		return nil, 0, err
 	}
 
 	// 分页查询
-	offset := (page - 1) * pageSize
-	err = query.Offset(offset).Limit(pageSize).Find(&projects).Error
+	if page > 0 && size > 0 {
+		offset := (page - 1) * size
+		query = query.Offset(offset).Limit(size)
+	}
+
+	// 执行查询
+	err = query.Preload("User").Find(&members).Error
 	if err != nil {
 		return nil, 0, err
 	}
 
-	return projects, count, nil
+	return members, total, nil
+}
+
+// CheckUserProjectRole 检查用户在项目中的角色
+func (r *projectRepository) CheckUserProjectRole(ctx context.Context, userID, projectID string, role string) (bool, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Model(&entity.ProjectMember{}).
+		Where("project_id = ? AND user_id = ? AND role = ?", projectID, userID, role).
+		Count(&count).Error
+
+	return count > 0, err
+}
+
+// CheckUserInProject 检查用户是否在项目中
+func (r *projectRepository) CheckUserInProject(ctx context.Context, userID, projectID string) (bool, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Model(&entity.ProjectMember{}).
+		Where("project_id = ? AND user_id = ?", projectID, userID).
+		Count(&count).Error
+
+	return count > 0, err
+}
+
+// AddProjectPermission 添加项目权限
+func (r *projectRepository) AddProjectPermission(ctx context.Context, permission *entity.Permission) error {
+	if permission.ID == "" {
+		permission.ID = utils.GenerateRecordID()
+	}
+	return r.db.WithContext(ctx).Create(permission).Error
+}
+
+// GetProjectPermission 获取项目权限
+func (r *projectRepository) GetProjectPermission(ctx context.Context, projectID, userID string) (*entity.Permission, error) {
+	var permission entity.Permission
+	err := r.db.WithContext(ctx).Where("project_id = ? AND user_id = ?", projectID, userID).First(&permission).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &permission, nil
+}
+
+// UpdateProjectPermission 更新项目权限
+func (r *projectRepository) UpdateProjectPermission(ctx context.Context, permission *entity.Permission) error {
+	return r.db.WithContext(ctx).Save(permission).Error
+}
+
+// RemoveProjectPermission 移除项目权限
+func (r *projectRepository) RemoveProjectPermission(ctx context.Context, projectID, userID string) error {
+	return r.db.WithContext(ctx).Where("project_id = ? AND user_id = ?", projectID, userID).Delete(&entity.Permission{}).Error
+}
+
+// ListProjectPermissions 获取项目权限列表
+func (r *projectRepository) ListProjectPermissions(ctx context.Context, projectID string, page, size int) ([]entity.Permission, int64, error) {
+	var permissions []entity.Permission
+	var total int64
+
+	query := r.db.WithContext(ctx).Model(&entity.Permission{}).Where("project_id = ?", projectID)
+
+	// 计算总数
+	err := query.Count(&total).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// 分页查询
+	if page > 0 && size > 0 {
+		offset := (page - 1) * size
+		query = query.Offset(offset).Limit(size)
+	}
+
+	// 执行查询
+	err = query.Preload("User").Find(&permissions).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return permissions, total, nil
+}
+
+// WithTx 事务支持
+func (r *projectRepository) WithTx(tx *gorm.DB) ProjectRepository {
+	return &projectRepository{
+		db: tx,
+	}
 }

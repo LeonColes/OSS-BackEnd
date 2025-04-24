@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"gorm.io/gorm"
 
@@ -16,35 +15,35 @@ import (
 
 // 项目状态常量
 const (
-	ProjectStatusNormal  = 1 // 正常
-	ProjectStatusArchive = 2 // 归档
-	ProjectStatusDeleted = 3 // 删除
+	ProjectStatusActive   = "active"
+	ProjectStatusInactive = "inactive"
+	ProjectStatusDeleted  = "deleted"
 )
 
 // 项目角色常量
 const (
-	ProjectRoleAdmin  = "admin"  // 管理员
-	ProjectRoleEditor = "editor" // 编辑者
-	ProjectRoleViewer = "viewer" // 查看者
+	ProjectRoleAdmin  = "admin"
+	ProjectRoleEditor = "editor"
+	ProjectRoleViewer = "viewer"
 )
 
 // ProjectService 项目服务接口
 type ProjectService interface {
 	// 项目基本操作
-	CreateProject(ctx context.Context, req *dto.CreateProjectRequest, creatorID uint64) (*dto.ProjectResponse, error)
-	UpdateProject(ctx context.Context, req *dto.UpdateProjectRequest, userID uint64) (*dto.ProjectResponse, error)
-	GetProjectByID(ctx context.Context, id uint64, userID uint64) (*dto.ProjectResponse, error)
-	ListProjects(ctx context.Context, query *dto.ProjectQuery, userID uint64) ([]*dto.ProjectResponse, int64, error)
-	GetUserProjects(ctx context.Context, query *dto.ProjectQuery, userID uint64) ([]*dto.ProjectResponse, int64, error)
-	DeleteProject(ctx context.Context, id uint64, userID uint64) error
+	CreateProject(ctx context.Context, req *dto.CreateProjectRequest, creatorID string) (*dto.ProjectResponse, error)
+	UpdateProject(ctx context.Context, req *dto.UpdateProjectRequest, userID string) (*dto.ProjectResponse, error)
+	GetProjectByID(ctx context.Context, id string, userID string) (*dto.ProjectResponse, error)
+	ListProjects(ctx context.Context, query *dto.ProjectQuery, userID string) ([]*dto.ProjectResponse, int64, error)
+	GetUserProjects(ctx context.Context, query *dto.ProjectQuery, userID string) ([]*dto.ProjectResponse, int64, error)
+	DeleteProject(ctx context.Context, id string, userID string) error
 
 	// 项目权限操作
-	SetPermission(ctx context.Context, req *dto.SetPermissionRequest, granterID uint64) error
-	RemovePermission(ctx context.Context, req *dto.RemovePermissionRequest, userID uint64) error
-	ListProjectUsers(ctx context.Context, projectID uint64, userID uint64) ([]*dto.ProjectUserResponse, error)
+	SetPermission(ctx context.Context, req *dto.SetPermissionRequest, granterID string) error
+	RemovePermission(ctx context.Context, req *dto.RemovePermissionRequest, userID string) error
+	ListProjectUsers(ctx context.Context, projectID string, userID string) ([]*dto.ProjectUserResponse, error)
 
 	// 检查权限
-	CheckUserProjectAccess(ctx context.Context, userID, projectID uint64, requiredRoles []string) (bool, error)
+	CheckUserProjectAccess(ctx context.Context, userID, projectID string, requiredRoles []string) (bool, error)
 }
 
 // projectService 项目服务实现
@@ -52,111 +51,133 @@ type projectService struct {
 	projectRepo repository.ProjectRepository
 	groupRepo   repository.GroupRepository
 	userRepo    repository.UserRepository
-	authSvc     AuthService
+	authService AuthService
+	db          *gorm.DB
 }
 
-// NewProjectService 创建项目服务
+// NewProjectService 创建项目服务实例
 func NewProjectService(
 	projectRepo repository.ProjectRepository,
 	groupRepo repository.GroupRepository,
 	userRepo repository.UserRepository,
-	authSvc AuthService,
+	authService AuthService,
+	db *gorm.DB,
 ) ProjectService {
 	return &projectService{
 		projectRepo: projectRepo,
 		groupRepo:   groupRepo,
 		userRepo:    userRepo,
-		authSvc:     authSvc,
+		authService: authService,
+		db:          db,
 	}
 }
 
 // CreateProject 创建项目
-func (s *projectService) CreateProject(ctx context.Context, req *dto.CreateProjectRequest, creatorID uint64) (*dto.ProjectResponse, error) {
-	// 检查群组是否存在
+func (s *projectService) CreateProject(ctx context.Context, req *dto.CreateProjectRequest, creatorID string) (*dto.ProjectResponse, error) {
+	// 检查用户是否存在
+	creator, err := s.userRepo.GetByID(ctx, creatorID)
+	if err != nil {
+		return nil, errors.New("创建者不存在")
+	}
+
+	// 检查分组是否存在
 	group, err := s.groupRepo.GetGroupByID(ctx, req.GroupID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("群组不存在")
-		}
-		return nil, err
+		return nil, errors.New("指定的分组不存在")
 	}
 
-	// 检查用户是否是群组管理员
-	isAdmin, err := s.groupRepo.CheckUserGroupRole(ctx, creatorID, req.GroupID, "admin")
+	// 检查用户是否有权限在该分组下创建项目
+	isGroupAdmin, err := s.authService.IsUserInRole(ctx, creatorID, "group_admin")
 	if err != nil {
 		return nil, err
 	}
 
-	if !isAdmin {
-		return nil, errors.New("只有群组管理员才能创建项目")
-	}
+	// 如果不是分组管理员或超级管理员，检查是否是分组成员
+	if !isGroupAdmin {
+		isSuperAdmin, err := s.authService.IsUserInRole(ctx, creatorID, "super_admin")
+		if err != nil {
+			return nil, err
+		}
 
-	// 创建项目路径前缀（群组ID+项目名）
-	pathPrefix := fmt.Sprintf("/%d/%s", req.GroupID, strings.ReplaceAll(req.Name, " ", "_"))
+		if !isSuperAdmin {
+			isGroupMember, err := s.groupRepo.CheckUserInGroup(ctx, group.ID, creatorID)
+			if err != nil {
+				return nil, err
+			}
+
+			if !isGroupMember {
+				return nil, errors.New("没有权限在该分组下创建项目")
+			}
+		}
+	}
 
 	// 创建项目
 	project := &entity.Project{
-		GroupID:     req.GroupID,
 		Name:        req.Name,
 		Description: req.Description,
-		PathPrefix:  pathPrefix,
+		GroupID:     req.GroupID,
 		CreatorID:   creatorID,
-		Status:      ProjectStatusNormal,
+		Status:      1, // 1: 正常
+		PathPrefix:  fmt.Sprintf("/%s/%s", group.GroupKey, strings.ReplaceAll(req.Name, " ", "_")),
 	}
 
-	err = s.projectRepo.CreateProject(ctx, project)
+	// 启动事务
+	err = s.db.Transaction(func(tx *gorm.DB) error {
+		// 在事务中创建临时repository
+		projectRepo := s.projectRepo.WithTx(tx)
+
+		// 创建项目
+		err := projectRepo.Create(ctx, project)
+		if err != nil {
+			return err
+		}
+
+		// 创建项目成员记录（创建者为管理员）
+		member := &entity.ProjectMember{
+			ProjectID: project.ID,
+			UserID:    creatorID,
+			Role:      ProjectRoleAdmin,
+		}
+		err = projectRepo.CreateProjectMember(ctx, member)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
+
 	if err != nil {
 		return nil, err
 	}
 
-	// 为创建者添加项目管理员权限
-	permission := &entity.Permission{
-		UserID:    creatorID,
-		ProjectID: project.ID,
-		Role:      ProjectRoleAdmin,
-		GrantedBy: creatorID,
-	}
-
-	err = s.projectRepo.SetPermission(ctx, permission)
-	if err != nil {
-		return nil, err
-	}
-
-	// 添加项目管理员权限到Casbin
-	domain := fmt.Sprintf("project:%d", project.ID)
-	err = s.authSvc.AddRoleForUser(ctx, creatorID, ProjectRoleAdmin, domain)
-	if err != nil {
-		return nil, err
-	}
-
-	// 获取创建者信息
-	creator, err := s.userRepo.GetByID(ctx, creatorID)
+	// 获取最新项目信息
+	createdProject, err := s.projectRepo.GetByID(ctx, project.ID)
 	if err != nil {
 		return nil, err
 	}
 
 	// 构建响应
 	return &dto.ProjectResponse{
-		ID:          project.ID,
-		Name:        project.Name,
-		Description: project.Description,
-		GroupID:     project.GroupID,
+		ID:          createdProject.ID,
+		Name:        createdProject.Name,
+		Description: createdProject.Description,
+		GroupID:     createdProject.GroupID,
 		GroupName:   group.Name,
-		PathPrefix:  project.PathPrefix,
-		CreatorID:   project.CreatorID,
+		PathPrefix:  createdProject.PathPrefix,
+		CreatorID:   createdProject.CreatorID,
 		CreatorName: creator.Name,
-		Status:      project.Status,
-		CreatedAt:   project.CreatedAt,
-		UpdatedAt:   project.UpdatedAt,
-		FileCount:   0,
-		TotalSize:   0,
+		Status:      createdProject.Status,
+		CreatedAt:   createdProject.CreatedAt,
+		UpdatedAt:   createdProject.UpdatedAt,
+		FileCount:   0, // 初始文件数为0
+		TotalSize:   0, // 初始存储大小为0
 	}, nil
 }
 
 // UpdateProject 更新项目
-func (s *projectService) UpdateProject(ctx context.Context, req *dto.UpdateProjectRequest, userID uint64) (*dto.ProjectResponse, error) {
+func (s *projectService) UpdateProject(ctx context.Context, req *dto.UpdateProjectRequest, userID string) (*dto.ProjectResponse, error) {
 	// 获取项目信息
-	project, err := s.projectRepo.GetProjectByID(ctx, req.ID)
+	project, err := s.projectRepo.GetByID(ctx, req.ID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errors.New("项目不存在")
@@ -181,13 +202,25 @@ func (s *projectService) UpdateProject(ctx context.Context, req *dto.UpdateProje
 		project.Status = req.Status
 	}
 
-	err = s.projectRepo.UpdateProject(ctx, project)
+	err = s.projectRepo.Update(ctx, project)
 	if err != nil {
 		return nil, err
 	}
 
 	// 获取最新项目信息
-	updatedProject, err := s.projectRepo.GetProjectByID(ctx, req.ID)
+	updatedProject, err := s.projectRepo.GetByID(ctx, req.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 获取用户信息
+	creator, err := s.userRepo.GetByID(ctx, updatedProject.CreatorID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 获取分组信息
+	group, err := s.groupRepo.GetGroupByID(ctx, updatedProject.GroupID)
 	if err != nil {
 		return nil, err
 	}
@@ -198,10 +231,10 @@ func (s *projectService) UpdateProject(ctx context.Context, req *dto.UpdateProje
 		Name:        updatedProject.Name,
 		Description: updatedProject.Description,
 		GroupID:     updatedProject.GroupID,
-		GroupName:   updatedProject.Group.Name,
+		GroupName:   group.Name,
 		PathPrefix:  updatedProject.PathPrefix,
 		CreatorID:   updatedProject.CreatorID,
-		CreatorName: updatedProject.Creator.Name,
+		CreatorName: creator.Name,
 		Status:      updatedProject.Status,
 		CreatedAt:   updatedProject.CreatedAt,
 		UpdatedAt:   updatedProject.UpdatedAt,
@@ -211,16 +244,7 @@ func (s *projectService) UpdateProject(ctx context.Context, req *dto.UpdateProje
 }
 
 // GetProjectByID 获取项目详情
-func (s *projectService) GetProjectByID(ctx context.Context, id uint64, userID uint64) (*dto.ProjectResponse, error) {
-	// 获取项目信息
-	project, err := s.projectRepo.GetProjectByID(ctx, id)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("项目不存在")
-		}
-		return nil, err
-	}
-
+func (s *projectService) GetProjectByID(ctx context.Context, id string, userID string) (*dto.ProjectResponse, error) {
 	// 检查用户是否有权限查看项目
 	hasAccess, err := s.CheckUserProjectAccess(ctx, userID, id, []string{ProjectRoleAdmin, ProjectRoleEditor, ProjectRoleViewer})
 	if err != nil {
@@ -228,7 +252,46 @@ func (s *projectService) GetProjectByID(ctx context.Context, id uint64, userID u
 	}
 
 	if !hasAccess {
-		return nil, errors.New("没有权限查看此项目")
+		// 检查是否是分组成员
+		project, err := s.projectRepo.GetByID(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+
+		if project == nil {
+			return nil, errors.New("项目不存在")
+		}
+
+		isGroupMember, err := s.groupRepo.CheckUserInGroup(ctx, project.GroupID, userID)
+		if err != nil {
+			return nil, err
+		}
+
+		if !isGroupMember {
+			return nil, errors.New("没有权限查看该项目")
+		}
+	}
+
+	// 获取项目信息
+	project, err := s.projectRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if project == nil {
+		return nil, errors.New("项目不存在")
+	}
+
+	// 获取创建者信息
+	creator, err := s.userRepo.GetByID(ctx, project.CreatorID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 获取分组信息
+	group, err := s.groupRepo.GetGroupByID(ctx, project.GroupID)
+	if err != nil {
+		return nil, err
 	}
 
 	// 构建响应
@@ -237,10 +300,10 @@ func (s *projectService) GetProjectByID(ctx context.Context, id uint64, userID u
 		Name:        project.Name,
 		Description: project.Description,
 		GroupID:     project.GroupID,
-		GroupName:   project.Group.Name,
+		GroupName:   group.Name,
 		PathPrefix:  project.PathPrefix,
 		CreatorID:   project.CreatorID,
-		CreatorName: project.Creator.Name,
+		CreatorName: creator.Name,
 		Status:      project.Status,
 		CreatedAt:   project.CreatedAt,
 		UpdatedAt:   project.UpdatedAt,
@@ -250,15 +313,26 @@ func (s *projectService) GetProjectByID(ctx context.Context, id uint64, userID u
 }
 
 // ListProjects 列出项目
-func (s *projectService) ListProjects(ctx context.Context, query *dto.ProjectQuery, userID uint64) ([]*dto.ProjectResponse, int64, error) {
+func (s *projectService) ListProjects(ctx context.Context, query *dto.ProjectQuery, userID string) ([]*dto.ProjectResponse, int64, error) {
 	// 检查用户是否存在
 	_, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
 		return nil, 0, errors.New("用户不存在")
 	}
 
+	// 构建查询条件
+	listReq := &dto.ProjectListRequest{
+		GroupID:   query.GroupID,
+		Status:    query.Status,
+		Name:      query.Keyword,
+		Page:      query.Page,
+		PageSize:  query.Size,
+		SortBy:    "created_at",
+		SortOrder: "desc",
+	}
+
 	// 获取项目列表
-	projects, total, err := s.projectRepo.ListProjects(ctx, query)
+	projects, total, err := s.projectRepo.List(ctx, listReq)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -266,15 +340,33 @@ func (s *projectService) ListProjects(ctx context.Context, query *dto.ProjectQue
 	// 构建响应
 	var responses []*dto.ProjectResponse
 	for _, project := range projects {
+		// 获取创建者信息
+		creator, err := s.userRepo.GetByID(ctx, project.CreatorID)
+		if err != nil {
+			// 如果获取创建者失败，使用默认值
+			creator = &entity.User{
+				Name: "未知用户",
+			}
+		}
+
+		// 获取分组信息
+		group, err := s.groupRepo.GetGroupByID(ctx, project.GroupID)
+		if err != nil {
+			// 如果获取分组失败，使用默认值
+			group = &entity.Group{
+				Name: "未知分组",
+			}
+		}
+
 		responses = append(responses, &dto.ProjectResponse{
 			ID:          project.ID,
 			Name:        project.Name,
 			Description: project.Description,
 			GroupID:     project.GroupID,
-			GroupName:   project.Group.Name,
+			GroupName:   group.Name,
 			PathPrefix:  project.PathPrefix,
 			CreatorID:   project.CreatorID,
-			CreatorName: project.Creator.Name,
+			CreatorName: creator.Name,
 			Status:      project.Status,
 			CreatedAt:   project.CreatedAt,
 			UpdatedAt:   project.UpdatedAt,
@@ -286,8 +378,8 @@ func (s *projectService) ListProjects(ctx context.Context, query *dto.ProjectQue
 	return responses, total, nil
 }
 
-// GetUserProjects 获取用户参与的项目
-func (s *projectService) GetUserProjects(ctx context.Context, query *dto.ProjectQuery, userID uint64) ([]*dto.ProjectResponse, int64, error) {
+// GetUserProjects 获取用户项目
+func (s *projectService) GetUserProjects(ctx context.Context, query *dto.ProjectQuery, userID string) ([]*dto.ProjectResponse, int64, error) {
 	// 检查用户是否存在
 	_, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
@@ -295,23 +387,88 @@ func (s *projectService) GetUserProjects(ctx context.Context, query *dto.Project
 	}
 
 	// 获取用户参与的项目
-	projects, total, err := s.projectRepo.GetUserProjects(ctx, userID, query)
+	projects, err := s.projectRepo.GetUserProjects(ctx, userID)
 	if err != nil {
 		return nil, 0, err
 	}
 
+	// 过滤项目（根据查询条件）
+	var filteredProjects []entity.Project
+	for _, project := range projects {
+		// 按状态过滤
+		if query.Status > 0 && project.Status != query.Status {
+			continue
+		}
+
+		// 按关键词过滤
+		if query.Keyword != "" && !strings.Contains(strings.ToLower(project.Name), strings.ToLower(query.Keyword)) {
+			continue
+		}
+
+		// 按群组过滤
+		if query.GroupID != "" && project.GroupID != query.GroupID {
+			continue
+		}
+
+		filteredProjects = append(filteredProjects, project)
+	}
+
+	// 计算总数
+	total := int64(len(filteredProjects))
+
+	// 分页处理
+	start := 0
+	end := len(filteredProjects)
+
+	if query.Page > 0 && query.Size > 0 {
+		start = (query.Page - 1) * query.Size
+		if start >= len(filteredProjects) {
+			start = 0
+		}
+
+		end = start + query.Size
+		if end > len(filteredProjects) {
+			end = len(filteredProjects)
+		}
+	}
+
+	// 超出范围时返回空数组
+	if start >= end {
+		return []*dto.ProjectResponse{}, total, nil
+	}
+
+	pagedProjects := filteredProjects[start:end]
+
 	// 构建响应
 	var responses []*dto.ProjectResponse
-	for _, project := range projects {
+	for _, project := range pagedProjects {
+		// 获取创建者信息
+		creator, err := s.userRepo.GetByID(ctx, project.CreatorID)
+		if err != nil {
+			// 如果获取创建者失败，使用默认值
+			creator = &entity.User{
+				Name: "未知用户",
+			}
+		}
+
+		// 获取分组信息
+		group, err := s.groupRepo.GetGroupByID(ctx, project.GroupID)
+		if err != nil {
+			// 如果获取分组失败，使用默认值
+			group = &entity.Group{
+				Name: "未知分组",
+			}
+		}
+
 		responses = append(responses, &dto.ProjectResponse{
 			ID:          project.ID,
 			Name:        project.Name,
 			Description: project.Description,
 			GroupID:     project.GroupID,
-			GroupName:   project.Group.Name,
+			GroupName:   group.Name,
 			PathPrefix:  project.PathPrefix,
 			CreatorID:   project.CreatorID,
-			CreatorName: project.Creator.Name,
+			CreatorName: creator.Name,
 			Status:      project.Status,
 			CreatedAt:   project.CreatedAt,
 			UpdatedAt:   project.UpdatedAt,
@@ -323,17 +480,8 @@ func (s *projectService) GetUserProjects(ctx context.Context, query *dto.Project
 	return responses, total, nil
 }
 
-// DeleteProject 删除项目（逻辑删除）
-func (s *projectService) DeleteProject(ctx context.Context, id uint64, userID uint64) error {
-	// 获取项目信息
-	project, err := s.projectRepo.GetProjectByID(ctx, id)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return errors.New("项目不存在")
-		}
-		return err
-	}
-
+// DeleteProject 删除项目
+func (s *projectService) DeleteProject(ctx context.Context, id string, userID string) error {
 	// 检查用户是否有权限删除项目
 	hasAccess, err := s.CheckUserProjectAccess(ctx, userID, id, []string{ProjectRoleAdmin})
 	if err != nil {
@@ -341,201 +489,142 @@ func (s *projectService) DeleteProject(ctx context.Context, id uint64, userID ui
 	}
 
 	if !hasAccess {
-		// 检查用户是否是群组管理员
-		isGroupAdmin, err := s.groupRepo.CheckUserGroupRole(ctx, userID, project.GroupID, "admin")
+		return errors.New("没有权限删除该项目")
+	}
+
+	// 获取项目信息
+	project, err := s.projectRepo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if project == nil {
+		return errors.New("项目不存在")
+	}
+
+	// 启动事务
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		projectRepo := s.projectRepo.WithTx(tx)
+
+		// 逻辑删除项目
+		project.Status = 3 // 3表示已删除
+		err = projectRepo.Update(ctx, project)
 		if err != nil {
 			return err
 		}
 
-		if !isGroupAdmin {
-			return errors.New("没有权限删除此项目")
-		}
-	}
+		// TODO: 可以添加清理项目资源的逻辑，如删除项目文件等
 
-	// 执行删除操作（逻辑删除）
-	return s.projectRepo.DeleteProject(ctx, id)
+		return nil
+	})
 }
 
-// SetPermission 设置项目权限
-func (s *projectService) SetPermission(ctx context.Context, req *dto.SetPermissionRequest, granterID uint64) error {
-	// 获取项目信息
-	project, err := s.projectRepo.GetProjectByID(ctx, req.ProjectID)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return errors.New("项目不存在")
-		}
-		return err
-	}
-
-	// 检查用户是否有权限设置项目权限
+// SetPermission 设置权限
+func (s *projectService) SetPermission(ctx context.Context, req *dto.SetPermissionRequest, granterID string) error {
+	// 检查授权者是否有权限设置项目权限
 	hasAccess, err := s.CheckUserProjectAccess(ctx, granterID, req.ProjectID, []string{ProjectRoleAdmin})
 	if err != nil {
 		return err
 	}
 
 	if !hasAccess {
-		// 检查用户是否是群组管理员
-		isGroupAdmin, err := s.groupRepo.CheckUserGroupRole(ctx, granterID, project.GroupID, "admin")
-		if err != nil {
-			return err
-		}
-
-		if !isGroupAdmin {
-			return errors.New("没有权限管理项目成员")
-		}
+		return errors.New("没有权限设置该项目的权限")
 	}
 
 	// 检查目标用户是否存在
-	_, err = s.userRepo.GetByID(ctx, req.UserID)
+	targetUser, err := s.userRepo.GetByID(ctx, req.UserID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return errors.New("目标用户不存在")
-		}
-		return err
+		return errors.New("目标用户不存在")
 	}
 
-	// 检查用户是否属于同一个群组
-	isMember, err := s.groupRepo.CheckUserInGroup(ctx, req.UserID, project.GroupID)
-	if err != nil {
-		return err
+	if targetUser == nil {
+		return errors.New("目标用户不存在")
 	}
 
-	if !isMember {
-		return errors.New("目标用户不在此项目所属群组中")
-	}
-
-	// 解析过期时间
-	var expireAt *time.Time
-	if req.ExpireAt != "" {
-		t, err := time.Parse("2006-01-02 15:04:05", req.ExpireAt)
-		if err != nil {
-			return errors.New("日期格式错误，请使用YYYY-MM-DD HH:MM:SS")
-		}
-		expireAt = &t
-	}
-
-	// 创建或更新权限
-	permission := &entity.Permission{
-		UserID:    req.UserID,
-		ProjectID: req.ProjectID,
-		Role:      req.Role,
-		GrantedBy: granterID,
-		ExpireAt:  expireAt,
-	}
-
-	err = s.projectRepo.SetPermission(ctx, permission)
+	// 检查项目是否存在
+	project, err := s.projectRepo.GetByID(ctx, req.ProjectID)
 	if err != nil {
 		return err
 	}
 
-	// 更新Casbin权限
-	domain := fmt.Sprintf("project:%d", req.ProjectID)
-	// sub := fmt.Sprintf("user:%d", req.UserID)
-
-	// 先移除旧角色
-	subject := fmt.Sprintf("user:%d", req.UserID)
-	roles, err := s.authSvc.GetRolesForUser(subject, domain)
-	if err != nil {
-		return err
+	if project == nil {
+		return errors.New("项目不存在")
 	}
 
-	for _, role := range roles {
-		err = s.authSvc.RemoveRoleForUser(ctx, req.UserID, role, domain)
+	// 如果是项目创建者，不允许修改其权限
+	if project.CreatorID == req.UserID {
+		return errors.New("不能修改项目创建者的权限")
+	}
+
+	// 启动事务
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		projectRepo := s.projectRepo.WithTx(tx)
+
+		// 检查是否已经是项目成员
+		member, err := projectRepo.GetProjectMember(ctx, req.ProjectID, req.UserID)
 		if err != nil {
 			return err
 		}
-	}
 
-	// 添加新角色
-	err = s.authSvc.AddRoleForUser(ctx, req.UserID, req.Role, domain)
-	if err != nil {
-		return err
-	}
+		// 如果已存在成员记录，更新角色
+		if member != nil {
+			member.Role = req.Role
+			return projectRepo.UpdateProjectMember(ctx, member)
+		}
 
-	return nil
+		// 否则创建新的成员记录
+		newMember := &entity.ProjectMember{
+			ProjectID: req.ProjectID,
+			UserID:    req.UserID,
+			Role:      req.Role,
+		}
+		return projectRepo.CreateProjectMember(ctx, newMember)
+	})
 }
 
-// RemovePermission 移除项目权限
-func (s *projectService) RemovePermission(ctx context.Context, req *dto.RemovePermissionRequest, userID uint64) error {
-	// 获取项目信息
-	project, err := s.projectRepo.GetProjectByID(ctx, req.ProjectID)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return errors.New("项目不存在")
-		}
-		return err
-	}
-
-	// 检查用户是否有权限移除项目权限
+// RemovePermission 移除权限
+func (s *projectService) RemovePermission(ctx context.Context, req *dto.RemovePermissionRequest, userID string) error {
+	// 检查操作者是否有权限移除项目权限
 	hasAccess, err := s.CheckUserProjectAccess(ctx, userID, req.ProjectID, []string{ProjectRoleAdmin})
 	if err != nil {
 		return err
 	}
 
 	if !hasAccess {
-		// 检查用户是否是群组管理员
-		isGroupAdmin, err := s.groupRepo.CheckUserGroupRole(ctx, userID, project.GroupID, "admin")
-		if err != nil {
-			return err
-		}
-
-		if !isGroupAdmin {
-			return errors.New("没有权限管理项目成员")
-		}
+		return errors.New("没有权限移除该项目的权限")
 	}
 
-	// 检查目标用户是否存在
-	_, err = s.userRepo.GetByID(ctx, req.UserID)
+	// 检查项目是否存在
+	project, err := s.projectRepo.GetByID(ctx, req.ProjectID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return errors.New("目标用户不存在")
-		}
 		return err
 	}
 
-	// 检查是否是项目创建者
+	if project == nil {
+		return errors.New("项目不存在")
+	}
+
+	// 如果是项目创建者，不允许移除其权限
 	if project.CreatorID == req.UserID {
 		return errors.New("不能移除项目创建者的权限")
 	}
 
-	// 移除权限
-	err = s.projectRepo.RemovePermission(ctx, req.ProjectID, req.UserID)
+	// 检查要移除的用户是否是项目成员
+	member, err := s.projectRepo.GetProjectMember(ctx, req.ProjectID, req.UserID)
 	if err != nil {
 		return err
 	}
 
-	// 更新Casbin权限
-	domain := fmt.Sprintf("project:%d", req.ProjectID)
-	// sub := fmt.Sprintf("user:%d", req.UserID)
-
-	// 移除角色
-	subject := fmt.Sprintf("user:%d", req.UserID)
-	roles, err := s.authSvc.GetRolesForUser(subject, domain)
-	if err != nil {
-		return err
+	if member == nil {
+		return errors.New("该用户不是项目成员")
 	}
 
-	for _, role := range roles {
-		err = s.authSvc.RemoveRoleForUser(ctx, req.UserID, role, domain)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
+	// 移除项目成员
+	return s.projectRepo.RemoveProjectMember(ctx, req.ProjectID, req.UserID)
 }
 
 // ListProjectUsers 列出项目用户
-func (s *projectService) ListProjectUsers(ctx context.Context, projectID uint64, userID uint64) ([]*dto.ProjectUserResponse, error) {
-	// 获取项目信息
-	project, err := s.projectRepo.GetProjectByID(ctx, projectID)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("项目不存在")
-		}
-		return nil, err
-	}
-
+func (s *projectService) ListProjectUsers(ctx context.Context, projectID string, userID string) ([]*dto.ProjectUserResponse, error) {
 	// 检查用户是否有权限查看项目成员
 	hasAccess, err := s.CheckUserProjectAccess(ctx, userID, projectID, []string{ProjectRoleAdmin, ProjectRoleEditor, ProjectRoleViewer})
 	if err != nil {
@@ -543,44 +632,114 @@ func (s *projectService) ListProjectUsers(ctx context.Context, projectID uint64,
 	}
 
 	if !hasAccess {
-		// 检查用户是否是群组管理员
-		isGroupAdmin, err := s.groupRepo.CheckUserGroupRole(ctx, userID, project.GroupID, "admin")
-		if err != nil {
-			return nil, err
-		}
-
-		if !isGroupAdmin {
-			return nil, errors.New("没有权限查看项目成员")
-		}
+		return nil, errors.New("没有权限查看项目成员")
 	}
 
-	// 获取项目用户列表
-	permissions, err := s.projectRepo.ListProjectUsers(ctx, projectID)
+	// 获取项目信息
+	project, err := s.projectRepo.GetByID(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	if project == nil {
+		return nil, errors.New("项目不存在")
+	}
+
+	// 获取项目成员列表
+	members, _, err := s.projectRepo.ListProjectMembers(ctx, projectID, 1, 1000) // 暂时不考虑分页
 	if err != nil {
 		return nil, err
 	}
 
 	// 构建响应
-	var responses []*dto.ProjectUserResponse
-	for _, permission := range permissions {
-		resp := &dto.ProjectUserResponse{
-			UserID:      permission.UserID,
-			Username:    permission.User.Name,
-			Email:       permission.User.Email,
-			Avatar:      permission.User.Avatar,
-			Role:        permission.Role,
-			GrantedBy:   permission.GrantedBy,
-			GranterName: permission.Granter.Name,
-			CreatedAt:   permission.CreatedAt,
-			ExpireAt:    permission.ExpireAt,
+	var response []*dto.ProjectUserResponse
+	for _, member := range members {
+		// 获取用户信息
+		user, err := s.userRepo.GetByID(ctx, member.UserID)
+		if err != nil {
+			continue // 跳过获取失败的用户
 		}
-		responses = append(responses, resp)
+
+		// 获取创建者（授权者）信息
+		granterUser, err := s.userRepo.GetByID(ctx, project.CreatorID)
+		if err != nil {
+			// 如果获取授权者失败，使用默认值
+			granterUser = &entity.User{
+				Name: "未知用户",
+			}
+		}
+
+		response = append(response, &dto.ProjectUserResponse{
+			UserID:      member.UserID,
+			Username:    user.Email, // 使用邮箱作为用户名
+			Email:       user.Email,
+			Avatar:      user.Avatar,
+			Role:        member.Role,
+			GrantedBy:   project.CreatorID,
+			GranterName: granterUser.Name, // 使用授权者的名称
+			CreatedAt:   member.CreatedAt,
+			ExpireAt:    nil, // 暂不设置过期时间
+		})
 	}
 
-	return responses, nil
+	return response, nil
 }
 
-// CheckUserProjectAccess 检查用户是否有项目权限
-func (s *projectService) CheckUserProjectAccess(ctx context.Context, userID, projectID uint64, requiredRoles []string) (bool, error) {
-	return s.projectRepo.CheckUserProjectRole(ctx, userID, projectID, requiredRoles)
+// CheckUserProjectAccess 检查用户项目访问权限
+func (s *projectService) CheckUserProjectAccess(ctx context.Context, userID, projectID string, requiredRoles []string) (bool, error) {
+	// 先检查是否是超级管理员
+	isSuperAdmin, err := s.authService.IsUserInRole(ctx, userID, "super_admin")
+	if err != nil {
+		return false, err
+	}
+
+	// 超级管理员拥有所有权限
+	if isSuperAdmin {
+		return true, nil
+	}
+
+	// 检查项目是否存在
+	project, err := s.projectRepo.GetByID(ctx, projectID)
+	if err != nil {
+		return false, err
+	}
+
+	if project == nil {
+		return false, errors.New("项目不存在")
+	}
+
+	// 检查是否是项目创建者
+	if project.CreatorID == userID {
+		return true, nil
+	}
+
+	// 检查用户在项目中的角色
+	member, err := s.projectRepo.GetProjectMember(ctx, projectID, userID)
+	if err != nil {
+		return false, err
+	}
+
+	// 如果不是项目成员，则无权限
+	if member == nil {
+		return false, nil
+	}
+
+	// 检查角色是否满足要求
+	for _, role := range requiredRoles {
+		if member.Role == role {
+			return true, nil
+		}
+
+		// admin角色可以执行editor和viewer角色的操作
+		if member.Role == ProjectRoleAdmin && (role == ProjectRoleEditor || role == ProjectRoleViewer) {
+			return true, nil
+		}
+
+		// editor角色可以执行viewer角色的操作
+		if member.Role == ProjectRoleEditor && role == ProjectRoleViewer {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }

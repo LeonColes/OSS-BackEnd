@@ -2,7 +2,6 @@ package controller
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 
@@ -53,7 +52,7 @@ func (c *ProjectController) CreateProject(ctx *gin.Context) {
 	}
 
 	// 调用服务创建项目
-	project, err := c.projectService.CreateProject(ctx, &req, userID.(uint64))
+	project, err := c.projectService.CreateProject(ctx, &req, userID.(string))
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, common.ErrorResponse("创建项目失败: "+err.Error()))
 		return
@@ -93,7 +92,7 @@ func (c *ProjectController) UpdateProject(ctx *gin.Context) {
 	}
 
 	// 调用服务更新项目
-	project, err := c.projectService.UpdateProject(ctx, &req, userID.(uint64))
+	project, err := c.projectService.UpdateProject(ctx, &req, userID.(string))
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, common.ErrorResponse("更新项目失败: "+err.Error()))
 		return
@@ -127,14 +126,10 @@ func (c *ProjectController) GetProjectByID(ctx *gin.Context) {
 
 	// 获取项目ID
 	projectIDStr := ctx.Param("id")
-	projectID, err := strconv.ParseUint(projectIDStr, 10, 64)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, common.ErrorResponse("无效的项目ID"))
-		return
-	}
+	projectID := projectIDStr
 
 	// 调用服务获取项目详情
-	project, err := c.projectService.GetProjectByID(ctx, projectID, userID.(uint64))
+	project, err := c.projectService.GetProjectByID(ctx, projectID, userID.(string))
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, common.ErrorResponse("获取项目详情失败: "+err.Error()))
 		return
@@ -176,7 +171,7 @@ func (c *ProjectController) ListProjects(ctx *gin.Context) {
 	}
 
 	// 调用服务获取项目列表
-	projects, total, err := c.projectService.ListProjects(ctx, &query, userID.(uint64))
+	projects, total, err := c.projectService.ListProjects(ctx, &query, userID.(string))
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, common.ErrorResponse("获取项目列表失败: "+err.Error()))
 		return
@@ -221,7 +216,7 @@ func (c *ProjectController) GetUserProjects(ctx *gin.Context) {
 	}
 
 	// 调用服务获取用户参与的项目
-	projects, total, err := c.projectService.GetUserProjects(ctx, &query, userID.(uint64))
+	projects, total, err := c.projectService.GetUserProjects(ctx, &query, userID.(string))
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, common.ErrorResponse("获取用户项目失败: "+err.Error()))
 		return
@@ -258,14 +253,10 @@ func (c *ProjectController) DeleteProject(ctx *gin.Context) {
 
 	// 获取项目ID
 	projectIDStr := ctx.Param("id")
-	projectID, err := strconv.ParseUint(projectIDStr, 10, 64)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, common.ErrorResponse("无效的项目ID"))
-		return
-	}
+	projectID := projectIDStr
 
 	// 调用服务删除项目
-	err = c.projectService.DeleteProject(ctx, projectID, userID.(uint64))
+	err := c.projectService.DeleteProject(ctx, projectID, userID.(string))
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, common.ErrorResponse("删除项目失败: "+err.Error()))
 		return
@@ -305,7 +296,7 @@ func (c *ProjectController) SetPermission(ctx *gin.Context) {
 	}
 
 	// 调用服务设置权限
-	err := c.projectService.SetPermission(ctx, &req, userID.(uint64))
+	err := c.projectService.SetPermission(ctx, &req, userID.(string))
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, common.ErrorResponse("设置项目权限失败: "+err.Error()))
 		return
@@ -345,7 +336,7 @@ func (c *ProjectController) RemovePermission(ctx *gin.Context) {
 	}
 
 	// 调用服务移除权限
-	err := c.projectService.RemovePermission(ctx, &req, userID.(uint64))
+	err := c.projectService.RemovePermission(ctx, &req, userID.(string))
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, common.ErrorResponse("移除项目权限失败: "+err.Error()))
 		return
@@ -379,14 +370,10 @@ func (c *ProjectController) ListProjectUsers(ctx *gin.Context) {
 
 	// 获取项目ID
 	projectIDStr := ctx.Param("id")
-	projectID, err := strconv.ParseUint(projectIDStr, 10, 64)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, common.ErrorResponse("无效的项目ID"))
-		return
-	}
+	projectID := projectIDStr
 
 	// 调用服务获取项目成员
-	users, err := c.projectService.ListProjectUsers(ctx, projectID, userID.(uint64))
+	users, err := c.projectService.ListProjectUsers(ctx, projectID, userID.(string))
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, common.ErrorResponse("获取项目成员失败: "+err.Error()))
 		return

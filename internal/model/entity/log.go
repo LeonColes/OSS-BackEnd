@@ -8,11 +8,11 @@ import (
 
 // OperationLog 操作日志模型
 type OperationLog struct {
-	ID         uint64         `gorm:"primaryKey;type:bigint unsigned" json:"id"`
-	UserID     uint64         `gorm:"type:bigint unsigned;index;not null" json:"user_id"`
+	ID         string         `gorm:"primaryKey;type:bigint unsigned" json:"id"`
+	UserID     string         `gorm:"type:bigint unsigned;index;not null" json:"user_id"`
 	Action     string         `gorm:"type:varchar(50);not null" json:"action"` // 操作类型: create, update, delete, share, etc.
 	Module     string         `gorm:"type:varchar(50);not null" json:"module"` // 模块: file, group, project, etc.
-	TargetID   uint64         `gorm:"type:bigint unsigned;index" json:"target_id"`
+	TargetID   string         `gorm:"type:bigint unsigned;index" json:"target_id"`
 	TargetType string         `gorm:"type:varchar(50)" json:"target_type"` // 目标类型: file, folder, group, project, etc.
 	Details    string         `gorm:"type:text" json:"details"`            // 详细信息，JSON格式
 	IP         string         `gorm:"type:varchar(50)" json:"ip"`          // 操作IP
@@ -29,8 +29,8 @@ func (OperationLog) TableName() string {
 
 // AccessLog 访问日志模型
 type AccessLog struct {
-	ID         uint64         `gorm:"primaryKey;type:bigint unsigned" json:"id"`
-	UserID     uint64         `gorm:"type:bigint unsigned;index" json:"user_id"` // 可能为空，表示匿名访问
+	ID         string         `gorm:"primaryKey;type:bigint unsigned" json:"id"`
+	UserID     string         `gorm:"type:bigint unsigned;index" json:"user_id"` // 可能为空，表示匿名访问
 	Method     string         `gorm:"type:varchar(10);not null" json:"method"`   // HTTP方法: GET, POST, PUT, DELETE, etc.
 	Path       string         `gorm:"type:varchar(255);not null" json:"path"`    // 请求路径
 	StatusCode int            `gorm:"type:int;not null" json:"status_code"`      // 响应状态码
@@ -50,11 +50,11 @@ func (AccessLog) TableName() string {
 
 // Log 操作日志模型
 type Log struct {
-	ID              uint64    `gorm:"primaryKey;type:bigint unsigned" json:"id"`
-	UserID          uint64    `gorm:"type:bigint unsigned;not null;index:idx_user_time,priority:1" json:"user_id"`
-	GroupID         uint64    `gorm:"type:bigint unsigned;not null" json:"group_id"`
-	ProjectID       uint64    `gorm:"type:bigint unsigned;not null;index:idx_project_time,priority:1" json:"project_id"`
-	FileID          *uint64   `gorm:"type:bigint unsigned" json:"file_id"`
+	ID              string    `gorm:"primaryKey;type:bigint unsigned" json:"id"`
+	UserID          string    `gorm:"type:bigint unsigned;not null;index:idx_user_time,priority:1" json:"user_id"`
+	GroupID         string    `gorm:"type:bigint unsigned;not null" json:"group_id"`
+	ProjectID       string    `gorm:"type:bigint unsigned;not null;index:idx_project_time,priority:1" json:"project_id"`
+	FileID          *string   `gorm:"type:bigint unsigned" json:"file_id"`
 	Operation       string    `gorm:"type:varchar(20);not null" json:"operation"`
 	IPAddress       string    `gorm:"type:varchar(50);not null" json:"ip_address"`
 	UserAgent       string    `gorm:"type:varchar(255)" json:"user_agent"`
@@ -77,9 +77,9 @@ func (Log) TableName() string {
 
 // StorageStat 存储统计模型
 type StorageStat struct {
-	ID           uint64    `gorm:"primaryKey;type:bigint unsigned" json:"id"`
-	GroupID      uint64    `gorm:"type:bigint unsigned;not null" json:"group_id"`
-	ProjectID    uint64    `gorm:"type:bigint unsigned;not null;index:idx_project_date,priority:1" json:"project_id"`
+	ID           string    `gorm:"primaryKey;type:bigint unsigned" json:"id"`
+	GroupID      string    `gorm:"type:bigint unsigned;not null" json:"group_id"`
+	ProjectID    string    `gorm:"type:bigint unsigned;not null;index:idx_project_date,priority:1" json:"project_id"`
 	StatDate     time.Time `gorm:"not null;index:idx_project_date,priority:2;index:idx_date" json:"stat_date"`
 	FileCount    int64     `gorm:"default:0;not null" json:"file_count"`
 	TotalSize    int64     `gorm:"default:0;not null" json:"total_size"`

@@ -53,7 +53,7 @@ func (c *FileController) Upload(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnauthorized, common.ErrorResponse("未授权"))
 		return
 	}
-	userID := userIDValue.(uint64)
+	userID := userIDValue.(string)
 
 	// 绑定请求参数
 	var req dto.FileUploadRequest
@@ -114,15 +114,11 @@ func (c *FileController) Download(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnauthorized, common.ErrorResponse("未授权"))
 		return
 	}
-	userID := userIDValue.(uint64)
+	userID := userIDValue.(string)
 
 	// 获取文件ID
 	idStr := ctx.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 64)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, common.ErrorResponse("无效的文件ID"))
-		return
-	}
+	id := idStr
 
 	// 获取文件信息
 	fileInfo, err := c.fileService.GetFileInfo(ctx, id)
@@ -190,7 +186,7 @@ func (c *FileController) ListFiles(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnauthorized, common.ErrorResponse("未授权"))
 		return
 	}
-	userID := userIDValue.(uint64)
+	userID := userIDValue.(string)
 
 	// 绑定请求参数
 	var req dto.FileListRequest
@@ -251,7 +247,7 @@ func (c *FileController) CreateFolder(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnauthorized, common.ErrorResponse("未授权"))
 		return
 	}
-	userID := userIDValue.(uint64)
+	userID := userIDValue.(string)
 
 	// 绑定请求参数
 	var req dto.FileFolderCreateRequest
@@ -306,15 +302,11 @@ func (c *FileController) DeleteFile(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnauthorized, common.ErrorResponse("未授权"))
 		return
 	}
-	userID := userIDValue.(uint64)
+	userID := userIDValue.(string)
 
 	// 获取文件ID
 	idStr := ctx.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 64)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, common.ErrorResponse("无效的文件ID"))
-		return
-	}
+	id := idStr
 
 	// 获取文件信息
 	fileInfo, err := c.fileService.GetFileInfo(ctx, id)
@@ -377,15 +369,11 @@ func (c *FileController) GetFileVersions(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnauthorized, common.ErrorResponse("未授权"))
 		return
 	}
-	userID := userIDValue.(uint64)
+	userID := userIDValue.(string)
 
 	// 获取文件ID
 	idStr := ctx.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 64)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, common.ErrorResponse("无效的文件ID"))
-		return
-	}
+	id := idStr
 
 	// 获取文件信息
 	fileInfo, err := c.fileService.GetFileInfo(ctx, id)
@@ -463,7 +451,7 @@ func (c *FileController) CreateShare(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnauthorized, common.ErrorResponse("未授权"))
 		return
 	}
-	userID := userIDValue.(uint64)
+	userID := userIDValue.(string)
 
 	// 绑定请求参数
 	var req dto.FileShareCreateRequest
@@ -632,7 +620,7 @@ func buildFileResponse(file *entity.File) dto.FileResponse {
 		PreviewURL:     file.PreviewURL,
 	}
 
-	if file.Uploader.ID > 0 {
+	if file.Uploader.ID != "" {
 		response.UploaderName = file.Uploader.Name
 	}
 

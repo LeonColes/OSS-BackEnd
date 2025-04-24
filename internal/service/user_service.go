@@ -19,7 +19,7 @@ var jwtSecret = []byte("oss-backend-secret-key")
 
 // JWTClaims 自定义JWT声明结构
 type JWTClaims struct {
-	UserID uint64 `json:"user_id"`
+	UserID string `json:"user_id"`
 	Email  string `json:"email"`
 	jwt.RegisteredClaims
 }
@@ -31,21 +31,21 @@ type UserService interface {
 	// Login 用户登录
 	Login(ctx context.Context, req *dto.UserLoginRequest, ip string) (*dto.LoginResponse, error)
 	// GetUserInfo 获取用户信息
-	GetUserInfo(ctx context.Context, id uint64) (*dto.UserResponse, error)
+	GetUserInfo(ctx context.Context, id string) (*dto.UserResponse, error)
 	// UpdateUserInfo 更新用户信息
-	UpdateUserInfo(ctx context.Context, id uint64, req *dto.UserUpdateRequest) error
+	UpdateUserInfo(ctx context.Context, id string, req *dto.UserUpdateRequest) error
 	// UpdatePassword 更新密码
-	UpdatePassword(ctx context.Context, id uint64, req *dto.UserPasswordUpdateRequest) error
+	UpdatePassword(ctx context.Context, id string, req *dto.UserPasswordUpdateRequest) error
 	// ListUsers 获取用户列表
 	ListUsers(ctx context.Context, req *dto.UserListRequest) (*dto.UserListResponse, error)
 	// UpdateUserStatus 更新用户状态
-	UpdateUserStatus(ctx context.Context, id uint64, status int) error
+	UpdateUserStatus(ctx context.Context, id string, status int) error
 	// GetUserRoles 获取用户角色
-	GetUserRoles(ctx context.Context, userID uint64) ([]entity.Role, error)
+	GetUserRoles(ctx context.Context, userID string) ([]entity.Role, error)
 	// AssignRoles 为用户分配角色
-	AssignRoles(ctx context.Context, userID uint64, roleIDs []uint) error
+	AssignRoles(ctx context.Context, userID string, roleIDs []uint) error
 	// RemoveRoles 移除用户角色
-	RemoveRoles(ctx context.Context, userID uint64, roleIDs []uint) error
+	RemoveRoles(ctx context.Context, userID string, roleIDs []uint) error
 	// InitAdminUser 初始化系统管理员用户
 	InitAdminUser(ctx context.Context) error
 }
@@ -98,7 +98,7 @@ func (s *userService) Register(ctx context.Context, req *dto.UserRegisterRequest
 	defaultRole, err := s.roleRepo.GetByCode(ctx, entity.RoleMember)
 	if err == nil && defaultRole != nil {
 		// 分配默认角色
-		err = s.userRepo.AssignRoles(ctx, uint64(user.ID), []uint{defaultRole.ID})
+		err = s.userRepo.AssignRoles(ctx, string(user.ID), []uint{defaultRole.ID})
 		if err != nil {
 			// 记录错误但不阻止注册完成
 			// TODO: 记录日志
@@ -106,18 +106,18 @@ func (s *userService) Register(ctx context.Context, req *dto.UserRegisterRequest
 
 		// 同步到Casbin
 		if s.authService != nil {
-			_ = s.authService.AddRoleForUser(ctx, uint64(user.ID), entity.RoleMember, "0")
+			_ = s.authService.AddRoleForUser(ctx, string(user.ID), entity.RoleMember, "0")
 		}
 	}
 
 	// 获取刚创建的用户完整信息（包括角色）
-	createdUser, err := s.userRepo.GetByID(ctx, uint64(user.ID))
+	createdUser, err := s.userRepo.GetByID(ctx, string(user.ID))
 	if err != nil {
 		return nil, err
 	}
 
 	// 获取用户角色
-	roles, _ := s.userRepo.GetUserRoles(ctx, uint64(user.ID))
+	roles, _ := s.userRepo.GetUserRoles(ctx, string(user.ID))
 	userResponse := s.convertToUserResponse(createdUser)
 	userResponse.Roles = s.convertToRoleResponses(roles)
 
@@ -144,20 +144,20 @@ func (s *userService) Login(ctx context.Context, req *dto.UserLoginRequest, ip s
 	}
 
 	// 更新最后登录信息
-	err = s.userRepo.UpdateLastLogin(ctx, uint64(user.ID), ip)
+	err = s.userRepo.UpdateLastLogin(ctx, string(user.ID), ip)
 	if err != nil {
 		// 非致命错误，可以继续
 		// TODO: 记录日志
 	}
 
 	// 生成JWT Token
-	token, refreshToken, expiresAt, err := s.generateToken(uint64(user.ID), user.Email)
+	token, refreshToken, expiresAt, err := s.generateToken(string(user.ID), user.Email)
 	if err != nil {
 		return nil, errors.New("生成令牌失败")
 	}
 
 	// 获取用户角色
-	roles, _ := s.userRepo.GetUserRoles(ctx, uint64(user.ID))
+	roles, _ := s.userRepo.GetUserRoles(ctx, string(user.ID))
 	userResponse := s.convertToUserResponse(user)
 	userResponse.Roles = s.convertToRoleResponses(roles)
 
@@ -171,7 +171,7 @@ func (s *userService) Login(ctx context.Context, req *dto.UserLoginRequest, ip s
 }
 
 // generateToken 生成JWT令牌
-func (s *userService) generateToken(userID uint64, email string) (string, string, int64, error) {
+func (s *userService) generateToken(userID string, email string) (string, string, int64, error) {
 	// Token过期时间：24小时
 	expiresAt := time.Now().Add(24 * time.Hour)
 
@@ -217,7 +217,7 @@ func (s *userService) generateToken(userID uint64, email string) (string, string
 }
 
 // GetUserInfo 获取用户信息
-func (s *userService) GetUserInfo(ctx context.Context, id uint64) (*dto.UserResponse, error) {
+func (s *userService) GetUserInfo(ctx context.Context, id string) (*dto.UserResponse, error) {
 	user, err := s.userRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -232,7 +232,7 @@ func (s *userService) GetUserInfo(ctx context.Context, id uint64) (*dto.UserResp
 }
 
 // UpdateUserInfo 更新用户信息
-func (s *userService) UpdateUserInfo(ctx context.Context, id uint64, req *dto.UserUpdateRequest) error {
+func (s *userService) UpdateUserInfo(ctx context.Context, id string, req *dto.UserUpdateRequest) error {
 	// 获取用户
 	user, err := s.userRepo.GetByID(ctx, id)
 	if err != nil {
@@ -248,7 +248,7 @@ func (s *userService) UpdateUserInfo(ctx context.Context, id uint64, req *dto.Us
 }
 
 // UpdatePassword 更新密码
-func (s *userService) UpdatePassword(ctx context.Context, id uint64, req *dto.UserPasswordUpdateRequest) error {
+func (s *userService) UpdatePassword(ctx context.Context, id string, req *dto.UserPasswordUpdateRequest) error {
 	// 获取用户
 	user, err := s.userRepo.GetByID(ctx, id)
 	if err != nil {
@@ -294,7 +294,7 @@ func (s *userService) ListUsers(ctx context.Context, req *dto.UserListRequest) (
 
 	for _, user := range users {
 		// 获取用户角色
-		roles, _ := s.userRepo.GetUserRoles(ctx, uint64(user.ID))
+		roles, _ := s.userRepo.GetUserRoles(ctx, string(user.ID))
 		userResponse := s.convertToUserResponse(user)
 		userResponse.Roles = s.convertToRoleResponses(roles)
 
@@ -305,7 +305,7 @@ func (s *userService) ListUsers(ctx context.Context, req *dto.UserListRequest) (
 }
 
 // UpdateUserStatus 更新用户状态
-func (s *userService) UpdateUserStatus(ctx context.Context, id uint64, status int) error {
+func (s *userService) UpdateUserStatus(ctx context.Context, id string, status int) error {
 	// 检查状态值是否有效
 	if status != entity.UserStatusNormal && status != entity.UserStatusDisabled && status != entity.UserStatusLocked {
 		return errors.New("无效的状态值")
@@ -315,12 +315,12 @@ func (s *userService) UpdateUserStatus(ctx context.Context, id uint64, status in
 }
 
 // GetUserRoles 获取用户角色
-func (s *userService) GetUserRoles(ctx context.Context, userID uint64) ([]entity.Role, error) {
+func (s *userService) GetUserRoles(ctx context.Context, userID string) ([]entity.Role, error) {
 	return s.userRepo.GetUserRoles(ctx, userID)
 }
 
 // AssignRoles 为用户分配角色
-func (s *userService) AssignRoles(ctx context.Context, userID uint64, roleIDs []uint) error {
+func (s *userService) AssignRoles(ctx context.Context, userID string, roleIDs []uint) error {
 	// 检查用户是否存在
 	_, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
@@ -355,7 +355,7 @@ func (s *userService) AssignRoles(ctx context.Context, userID uint64, roleIDs []
 }
 
 // RemoveRoles 移除用户角色
-func (s *userService) RemoveRoles(ctx context.Context, userID uint64, roleIDs []uint) error {
+func (s *userService) RemoveRoles(ctx context.Context, userID string, roleIDs []uint) error {
 	// 检查用户是否存在
 	_, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
@@ -390,7 +390,7 @@ func (s *userService) RemoveRoles(ctx context.Context, userID uint64, roleIDs []
 // convertToUserResponse 将用户实体转换为用户响应
 func (s *userService) convertToUserResponse(user *entity.User) *dto.UserResponse {
 	return &dto.UserResponse{
-		ID:          uint64(user.ID),
+		ID:          string(user.ID),
 		Email:       user.Email,
 		Name:        user.Name,
 		Avatar:      user.Avatar,
@@ -441,7 +441,7 @@ func (s *userService) InitAdminUser(ctx context.Context) error {
 	// 检查用户中是否有管理员
 	hasAdmin := false
 	for _, user := range users {
-		roles, err := s.userRepo.GetUserRoles(ctx, uint64(user.ID))
+		roles, err := s.userRepo.GetUserRoles(ctx, string(user.ID))
 		if err != nil {
 			continue
 		}

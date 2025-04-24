@@ -29,7 +29,7 @@ type UserPasswordUpdateRequest struct {
 
 // UserResponse 用户信息响应
 type UserResponse struct {
-	ID          uint64         `json:"id" example:"1"`                                  // 用户ID
+	ID          string         `json:"id" example:"1"`                                  // 用户ID
 	Email       string         `json:"email" example:"user@example.com"`                // 用户邮箱
 	Name        string         `json:"name" example:"张三"`                               // 用户姓名
 	Avatar      string         `json:"avatar" example:"https://example.com/avatar.jpg"` // 头像URL

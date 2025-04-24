@@ -49,7 +49,7 @@ func (c *GroupController) CreateGroup(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnauthorized, common.ErrorResponse("未授权"))
 		return
 	}
-	userID := userIDValue.(uint64)
+	userID := userIDValue.(string)
 
 	err := c.groupService.CreateGroup(ctx, &req, userID)
 	if err != nil {
@@ -86,7 +86,7 @@ func (c *GroupController) UpdateGroup(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnauthorized, common.ErrorResponse("未授权"))
 		return
 	}
-	userID := userIDValue.(uint64)
+	userID := userIDValue.(string)
 
 	err := c.groupService.UpdateGroup(ctx, &req, userID)
 	if err != nil {
@@ -113,11 +113,7 @@ func (c *GroupController) UpdateGroup(ctx *gin.Context) {
 func (c *GroupController) GetGroupByID(ctx *gin.Context) {
 	// 解析群组ID
 	idStr := ctx.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 64)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, common.ErrorResponse("无效的群组ID"))
-		return
-	}
+	id := idStr
 
 	// 获取当前用户ID
 	userIDValue, exists := ctx.Get("userID")
@@ -125,7 +121,7 @@ func (c *GroupController) GetGroupByID(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnauthorized, common.ErrorResponse("未授权"))
 		return
 	}
-	userID := userIDValue.(uint64)
+	userID := userIDValue.(string)
 
 	group, err := c.groupService.GetGroupByID(ctx, id, userID)
 	if err != nil {
@@ -165,7 +161,7 @@ func (c *GroupController) ListGroups(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnauthorized, common.ErrorResponse("未授权"))
 		return
 	}
-	userID := userIDValue.(uint64)
+	userID := userIDValue.(string)
 
 	groups, err := c.groupService.ListGroups(ctx, &req, userID)
 	if err != nil {
@@ -202,7 +198,7 @@ func (c *GroupController) JoinGroup(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnauthorized, common.ErrorResponse("未授权"))
 		return
 	}
-	userID := userIDValue.(uint64)
+	userID := userIDValue.(string)
 
 	err := c.groupService.JoinGroup(ctx, &req, userID)
 	if err != nil {
@@ -231,19 +227,11 @@ func (c *GroupController) JoinGroup(ctx *gin.Context) {
 func (c *GroupController) AddMember(ctx *gin.Context) {
 	// 解析群组ID
 	idStr := ctx.Param("id")
-	groupID, err := strconv.ParseUint(idStr, 10, 64)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, common.ErrorResponse("无效的群组ID"))
-		return
-	}
+	groupID := idStr
 
 	// 解析用户ID
 	userIDStr := ctx.Query("user_id")
-	userID, err := strconv.ParseUint(userIDStr, 10, 64)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, common.ErrorResponse("无效的用户ID"))
-		return
-	}
+	userID := userIDStr
 
 	// 解析角色
 	role := ctx.Query("role")
@@ -258,9 +246,9 @@ func (c *GroupController) AddMember(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnauthorized, common.ErrorResponse("未授权"))
 		return
 	}
-	operatorID := operatorIDValue.(uint64)
+	operatorID := operatorIDValue.(string)
 
-	err = c.groupService.AddMember(ctx, groupID, userID, role, operatorID)
+	err := c.groupService.AddMember(ctx, groupID, userID, role, operatorID)
 	if err != nil {
 		ctx.JSON(http.StatusBadRequest, common.ErrorResponse(err.Error()))
 		return
@@ -286,11 +274,7 @@ func (c *GroupController) AddMember(ctx *gin.Context) {
 func (c *GroupController) UpdateMemberRole(ctx *gin.Context) {
 	// 解析群组ID
 	idStr := ctx.Param("id")
-	groupID, err := strconv.ParseUint(idStr, 10, 64)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, common.ErrorResponse("无效的群组ID"))
-		return
-	}
+	groupID := idStr
 
 	var req dto.GroupMemberUpdateRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
@@ -304,9 +288,9 @@ func (c *GroupController) UpdateMemberRole(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnauthorized, common.ErrorResponse("未授权"))
 		return
 	}
-	operatorID := operatorIDValue.(uint64)
+	operatorID := operatorIDValue.(string)
 
-	err = c.groupService.UpdateMemberRole(ctx, groupID, &req, operatorID)
+	err := c.groupService.UpdateMemberRole(ctx, groupID, &req, operatorID)
 	if err != nil {
 		ctx.JSON(http.StatusBadRequest, common.ErrorResponse(err.Error()))
 		return
@@ -332,19 +316,11 @@ func (c *GroupController) UpdateMemberRole(ctx *gin.Context) {
 func (c *GroupController) RemoveMember(ctx *gin.Context) {
 	// 解析群组ID
 	idStr := ctx.Param("id")
-	groupID, err := strconv.ParseUint(idStr, 10, 64)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, common.ErrorResponse("无效的群组ID"))
-		return
-	}
+	groupID := idStr
 
 	// 解析用户ID
 	userIDStr := ctx.Query("user_id")
-	userID, err := strconv.ParseUint(userIDStr, 10, 64)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, common.ErrorResponse("无效的用户ID"))
-		return
-	}
+	userID := userIDStr
 
 	// 获取当前用户ID
 	operatorIDValue, exists := ctx.Get("userID")
@@ -352,9 +328,9 @@ func (c *GroupController) RemoveMember(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnauthorized, common.ErrorResponse("未授权"))
 		return
 	}
-	operatorID := operatorIDValue.(uint64)
+	operatorID := operatorIDValue.(string)
 
-	err = c.groupService.RemoveMember(ctx, groupID, userID, operatorID)
+	err := c.groupService.RemoveMember(ctx, groupID, userID, operatorID)
 	if err != nil {
 		ctx.JSON(http.StatusBadRequest, common.ErrorResponse(err.Error()))
 		return
@@ -381,11 +357,7 @@ func (c *GroupController) RemoveMember(ctx *gin.Context) {
 func (c *GroupController) ListMembers(ctx *gin.Context) {
 	// 解析群组ID
 	idStr := ctx.Param("id")
-	groupID, err := strconv.ParseUint(idStr, 10, 64)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, common.ErrorResponse("无效的群组ID"))
-		return
-	}
+	groupID := idStr
 
 	// 解析分页参数
 	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
@@ -418,7 +390,7 @@ func (c *GroupController) GetUserGroups(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnauthorized, common.ErrorResponse("未授权"))
 		return
 	}
-	userID := userIDValue.(uint64)
+	userID := userIDValue.(string)
 
 	groups, err := c.groupService.GetUserGroups(ctx, userID)
 	if err != nil {
@@ -455,7 +427,7 @@ func (c *GroupController) GenerateInviteCode(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnauthorized, common.ErrorResponse("未授权"))
 		return
 	}
-	userID := userIDValue.(uint64)
+	userID := userIDValue.(string)
 
 	invite, err := c.groupService.GenerateInviteCode(ctx, &req, userID)
 	if err != nil {

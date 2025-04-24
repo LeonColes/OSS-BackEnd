@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -497,12 +498,36 @@ func getNestedValue(data map[string]interface{}, path []string) interface{} {
 	if len(path) == 0 {
 		return nil
 	}
-	if len(path) == 1 {
-		return data[path[0]]
+
+	// 处理当前层级
+	current := path[0]
+
+	// 处理数组索引，如 data.0.id 格式
+	if index, err := strconv.Atoi(current); err == nil {
+		// 如果当前路径是数字，尝试作为数组索引处理
+		if arr, ok := data["data"].([]interface{}); ok && index >= 0 && index < len(arr) {
+			if len(path) == 1 {
+				return arr[index]
+			}
+
+			// 如果数组元素是map，继续递归处理
+			if nestedMap, ok := arr[index].(map[string]interface{}); ok {
+				return getNestedValue(nestedMap, path[1:])
+			}
+			return nil
+		}
 	}
-	if nested, ok := data[path[0]].(map[string]interface{}); ok {
+
+	// 常规的对象属性访问
+	if len(path) == 1 {
+		return data[current]
+	}
+
+	// 递归处理嵌套对象
+	if nested, ok := data[current].(map[string]interface{}); ok {
 		return getNestedValue(nested, path[1:])
 	}
+
 	return nil
 }
 

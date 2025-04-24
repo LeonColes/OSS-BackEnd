@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"log"
+
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -21,22 +23,25 @@ import (
 // FileService 文件服务接口
 type FileService interface {
 	// 文件操作
-	Upload(ctx context.Context, projectID, uploaderID uint64, file *multipart.FileHeader, path string) (*entity.File, error)
-	Download(ctx context.Context, fileID uint64, userID uint64) (io.ReadCloser, *entity.File, error)
-	ListFiles(ctx context.Context, projectID uint64, path string, recursive bool, page, pageSize int) ([]*entity.File, int64, error)
-	CreateFolder(ctx context.Context, projectID, userID uint64, path, folderName string) (*entity.File, error)
-	DeleteFile(ctx context.Context, fileID, userID uint64) error
-	RestoreFile(ctx context.Context, fileID, userID uint64) error
-	GetFileInfo(ctx context.Context, fileID uint64) (*entity.File, error)
+	Upload(ctx context.Context, projectID, uploaderID string, file *multipart.FileHeader, path string) (*entity.File, error)
+	Download(ctx context.Context, fileID string, userID string) (io.ReadCloser, *entity.File, error)
+	ListFiles(ctx context.Context, projectID string, path string, recursive bool, page, pageSize int) ([]*entity.File, int64, error)
+	CreateFolder(ctx context.Context, projectID, userID string, path, folderName string) (*entity.File, error)
+	DeleteFile(ctx context.Context, fileID, userID string) error
+	RestoreFile(ctx context.Context, fileID, userID string) error
+	GetFileInfo(ctx context.Context, fileID string) (*entity.File, error)
 
 	// 版本管理
-	GetFileVersions(ctx context.Context, fileID uint64) ([]*entity.FileVersion, error)
-	GetFileVersion(ctx context.Context, fileID uint64, version int) (*entity.FileVersion, error)
+	GetFileVersions(ctx context.Context, fileID string) ([]*entity.FileVersion, error)
+	GetFileVersion(ctx context.Context, fileID string, version int) (*entity.FileVersion, error)
 
 	// 文件分享
-	CreateShare(ctx context.Context, fileID, userID uint64, password string, expireHours, downloadLimit int) (*entity.FileShare, error)
+	CreateShare(ctx context.Context, fileID, userID string, password string, expireHours, downloadLimit int) (*entity.FileShare, error)
 	GetShareInfo(ctx context.Context, shareCode string) (*entity.FileShare, error)
 	DownloadSharedFile(ctx context.Context, shareCode, password string) (io.ReadCloser, *entity.File, error)
+
+	// 公共下载
+	GetPublicDownloadURL(ctx context.Context, fileID string) (string, error)
 }
 
 // fileService 文件服务实现
@@ -66,9 +71,9 @@ func NewFileService(
 }
 
 // Upload 上传文件
-func (s *fileService) Upload(ctx context.Context, projectID, uploaderID uint64, file *multipart.FileHeader, path string) (*entity.File, error) {
+func (s *fileService) Upload(ctx context.Context, projectID, uploaderID string, file *multipart.FileHeader, path string) (*entity.File, error) {
 	// 1. 获取项目信息，检查项目是否存在
-	project, err := s.projectRepo.GetProjectByID(ctx, projectID)
+	project, err := s.projectRepo.GetByID(ctx, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -237,7 +242,7 @@ func (s *fileService) Upload(ctx context.Context, projectID, uploaderID uint64, 
 }
 
 // Download 下载文件
-func (s *fileService) Download(ctx context.Context, fileID, userID uint64) (io.ReadCloser, *entity.File, error) {
+func (s *fileService) Download(ctx context.Context, fileID, userID string) (io.ReadCloser, *entity.File, error) {
 	// 1. 获取文件信息
 	file, err := s.fileRepo.GetByID(ctx, fileID)
 	if err != nil {
@@ -253,9 +258,9 @@ func (s *fileService) Download(ctx context.Context, fileID, userID uint64) (io.R
 	}
 
 	// 3. 获取项目信息
-	project, err := s.projectRepo.GetProjectByID(ctx, file.ProjectID)
+	project, err := s.projectRepo.GetByID(ctx, file.ProjectID)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("获取项目信息失败: %w", err)
 	}
 	if project == nil {
 		return nil, nil, errors.New("项目不存在")
@@ -272,9 +277,9 @@ func (s *fileService) Download(ctx context.Context, fileID, userID uint64) (io.R
 }
 
 // ListFiles 获取文件列表
-func (s *fileService) ListFiles(ctx context.Context, projectID uint64, path string, recursive bool, page, pageSize int) ([]*entity.File, int64, error) {
+func (s *fileService) ListFiles(ctx context.Context, projectID string, path string, recursive bool, page, pageSize int) ([]*entity.File, int64, error) {
 	// 检查项目是否存在
-	project, err := s.projectRepo.GetProjectByID(ctx, projectID)
+	project, err := s.projectRepo.GetByID(ctx, projectID)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -287,9 +292,9 @@ func (s *fileService) ListFiles(ctx context.Context, projectID uint64, path stri
 }
 
 // CreateFolder 创建文件夹
-func (s *fileService) CreateFolder(ctx context.Context, projectID, userID uint64, path, folderName string) (*entity.File, error) {
-	// 1. 获取项目信息
-	project, err := s.projectRepo.GetProjectByID(ctx, projectID)
+func (s *fileService) CreateFolder(ctx context.Context, projectID, userID string, path, folderName string) (*entity.File, error) {
+	// 1. 获取项目信息，检查项目是否存在
+	project, err := s.projectRepo.GetByID(ctx, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -350,7 +355,7 @@ func (s *fileService) CreateFolder(ctx context.Context, projectID, userID uint64
 }
 
 // DeleteFile 删除文件(软删除)
-func (s *fileService) DeleteFile(ctx context.Context, fileID, userID uint64) error {
+func (s *fileService) DeleteFile(ctx context.Context, fileID, userID string) error {
 	// 1. 获取文件信息
 	file, err := s.fileRepo.GetByID(ctx, fileID)
 	if err != nil {
@@ -380,7 +385,7 @@ func (s *fileService) DeleteFile(ctx context.Context, fileID, userID uint64) err
 }
 
 // RestoreFile 恢复文件
-func (s *fileService) RestoreFile(ctx context.Context, fileID, userID uint64) error {
+func (s *fileService) RestoreFile(ctx context.Context, fileID, userID string) error {
 	// 1. 获取文件信息
 	file, err := s.fileRepo.GetByID(ctx, fileID)
 	if err != nil {
@@ -409,12 +414,12 @@ func (s *fileService) RestoreFile(ctx context.Context, fileID, userID uint64) er
 }
 
 // GetFileInfo 获取文件信息
-func (s *fileService) GetFileInfo(ctx context.Context, fileID uint64) (*entity.File, error) {
+func (s *fileService) GetFileInfo(ctx context.Context, fileID string) (*entity.File, error) {
 	return s.fileRepo.GetByID(ctx, fileID)
 }
 
 // GetFileVersions 获取文件版本列表
-func (s *fileService) GetFileVersions(ctx context.Context, fileID uint64) ([]*entity.FileVersion, error) {
+func (s *fileService) GetFileVersions(ctx context.Context, fileID string) ([]*entity.FileVersion, error) {
 	// 1. 获取文件信息
 	file, err := s.fileRepo.GetByID(ctx, fileID)
 	if err != nil {
@@ -429,7 +434,7 @@ func (s *fileService) GetFileVersions(ctx context.Context, fileID uint64) ([]*en
 }
 
 // GetFileVersion 获取文件特定版本
-func (s *fileService) GetFileVersion(ctx context.Context, fileID uint64, version int) (*entity.FileVersion, error) {
+func (s *fileService) GetFileVersion(ctx context.Context, fileID string, version int) (*entity.FileVersion, error) {
 	// 1. 获取文件信息
 	file, err := s.fileRepo.GetByID(ctx, fileID)
 	if err != nil {
@@ -462,7 +467,7 @@ func generateShareCode() string {
 }
 
 // CreateShare 创建文件分享
-func (s *fileService) CreateShare(ctx context.Context, fileID, userID uint64, password string, expireHours, downloadLimit int) (*entity.FileShare, error) {
+func (s *fileService) CreateShare(ctx context.Context, fileID, userID string, password string, expireHours, downloadLimit int) (*entity.FileShare, error) {
 	// 1. 获取文件信息
 	file, err := s.fileRepo.GetByID(ctx, fileID)
 	if err != nil {
@@ -555,7 +560,7 @@ func (s *fileService) DownloadSharedFile(ctx context.Context, shareCode, passwor
 	}
 
 	// 5. 获取项目信息
-	project, err := s.projectRepo.GetProjectByID(ctx, file.ProjectID)
+	project, err := s.projectRepo.GetByID(ctx, file.ProjectID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -563,18 +568,67 @@ func (s *fileService) DownloadSharedFile(ctx context.Context, shareCode, passwor
 		return nil, nil, errors.New("项目不存在")
 	}
 
-	// 6. 更新下载次数
-	err = s.fileRepo.UpdateShareDownloadCount(ctx, share.ID)
-	if err != nil {
-		return nil, nil, fmt.Errorf("更新下载次数失败: %w", err)
-	}
-
-	// 7. 从MinIO下载文件
+	// 6. 从MinIO下载文件
 	objectName := minio.GetObjectName(file.ProjectID, file.FilePath, file.FileName)
 	fileReader, _, err := s.minioClient.DownloadFile(ctx, project.Group.GroupKey, objectName)
 	if err != nil {
 		return nil, nil, fmt.Errorf("下载文件失败: %w", err)
 	}
 
+	// 7. 更新下载次数
+	err = s.fileRepo.UpdateShareDownloadCount(ctx, share.ID)
+	if err != nil {
+		// 非致命错误，可以忽略
+		log.Printf("更新分享下载次数失败: %v", err)
+	}
+
 	return fileReader, file, nil
+}
+
+// GetPublicDownloadURL 获取公共下载URL
+func (s *fileService) GetPublicDownloadURL(ctx context.Context, fileID string) (string, error) {
+	// 1. 获取文件信息
+	file, err := s.fileRepo.GetByID(ctx, fileID)
+	if err != nil {
+		return "", err
+	}
+	if file == nil {
+		return "", errors.New("文件不存在")
+	}
+
+	// 2. 获取项目信息
+	project, err := s.projectRepo.GetByID(ctx, file.ProjectID)
+	if err != nil {
+		return "", fmt.Errorf("获取项目信息失败: %w", err)
+	}
+	if project == nil {
+		return "", errors.New("项目不存在")
+	}
+
+	// 3. 生成公共下载URL
+	objectName := minio.GetObjectName(file.ProjectID, file.FilePath, file.FileName)
+	return s.minioClient.GetPublicDownloadURL(ctx, project.Group.GroupKey, objectName)
+}
+
+func (s *fileService) CheckFilePermission(ctx context.Context, fileID, userID string, requiredRoles []string) (bool, error) {
+	// 1. 获取文件信息
+	file, err := s.fileRepo.GetByID(ctx, fileID)
+	if err != nil {
+		return false, err
+	}
+	if file == nil {
+		return false, errors.New("文件不存在")
+	}
+
+	// 2. 获取项目信息
+	project, err := s.projectRepo.GetByID(ctx, file.ProjectID)
+	if err != nil {
+		return false, err
+	}
+	if project == nil {
+		return false, errors.New("项目不存在")
+	}
+
+	// 3. 检查用户是否拥有所需角色
+	return s.authService.CheckUserProjectPermission(ctx, userID, file.ProjectID, requiredRoles)
 }

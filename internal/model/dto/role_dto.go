@@ -9,10 +9,11 @@ type RoleCreateRequest struct {
 
 // RoleUpdateRequest 更新角色请求
 type RoleUpdateRequest struct {
-	ID          uint   `json:"id" binding:"required" example:"1"`     // 角色ID
-	Name        string `json:"name" binding:"required" example:"管理员"` // 角色名称
-	Description string `json:"description" example:"系统管理员角色"`         // 角色描述
-	Status      int    `json:"status" example:"1"`                    // 状态：1-启用，0-禁用
+	ID          uint   `json:"id" binding:"required" example:"1"`       // 角色ID
+	Name        string `json:"name" binding:"required" example:"管理员"`   // 角色名称
+	Description string `json:"description" example:"系统管理员角色"`           // 角色描述
+	Code        string `json:"code" binding:"required" example:"ADMIN"` // 角色编码
+	Status      int    `json:"status" example:"1"`                      // 状态：1-启用，0-禁用
 }
 
 // RoleResponse 角色响应

@@ -35,8 +35,8 @@ const (
 type AuthService interface {
 	// Casbin服务部分
 	CheckPermission(sub, domain, obj, act string) (bool, error)
-	AddRoleForUser(ctx context.Context, userID uint64, role string, domain string) error
-	RemoveRoleForUser(ctx context.Context, userID uint64, role string, domain string) error
+	AddRoleForUser(ctx context.Context, userID string, role string, domain string) error
+	RemoveRoleForUser(ctx context.Context, userID string, role string, domain string) error
 	GetRolesForUser(subject string, domain string) ([]string, error)
 	InitializeRBAC() error
 
@@ -50,21 +50,21 @@ type AuthService interface {
 	ListRoles(ctx context.Context, req *dto.RoleListRequest) (*dto.RoleListResponse, error)
 
 	// 为控制器提供DTO适配方法
-	CreateRoleFromDTO(ctx context.Context, req *dto.RoleCreateRequest, createdBy uint) error
-	UpdateRoleFromDTO(ctx context.Context, req *dto.RoleUpdateRequest, updatedBy uint) error
+	CreateRoleFromDTO(ctx context.Context, req *dto.RoleCreateRequest, createdBy string) error
+	UpdateRoleFromDTO(ctx context.Context, req *dto.RoleUpdateRequest, updatedBy string) error
 
 	// 用户角色关联部分
-	AssignRolesToUser(ctx context.Context, userID uint64, roleIDs []uint) error
-	RemoveRolesFromUser(ctx context.Context, userID uint64, roleIDs []uint) error
-	GetUserRoles(ctx context.Context, userID uint64) ([]entity.Role, error)
+	AssignRolesToUser(ctx context.Context, userID string, roleIDs []uint) error
+	RemoveRolesFromUser(ctx context.Context, userID string, roleIDs []uint) error
+	GetUserRoles(ctx context.Context, userID string) ([]entity.Role, error)
 
 	// 权限检查辅助方法
-	CanUserAccessResource(ctx context.Context, userID uint64, resourceType, action, domain string) (bool, error)
-	IsUserInRole(ctx context.Context, userID uint64, roleCode string) (bool, error)
+	CanUserAccessResource(ctx context.Context, userID string, resourceType, action, domain string) (bool, error)
+	IsUserInRole(ctx context.Context, userID string, roleCode string) (bool, error)
 
 	// 项目权限检查方法
-	CheckUserProjectPermission(ctx context.Context, userID, projectID uint64, allowedRoles []string) (bool, error)
-	IsProjectAdmin(ctx context.Context, userID, projectID uint64) (bool, error)
+	CheckUserProjectPermission(ctx context.Context, userID, projectID string, allowedRoles []string) (bool, error)
+	IsProjectAdmin(ctx context.Context, userID, projectID string) (bool, error)
 }
 
 // authService 认证授权服务实现
@@ -101,9 +101,9 @@ func (s *authService) CheckPermission(sub, domain, obj, act string) (bool, error
 }
 
 // AddRoleForUser 为用户添加角色
-func (s *authService) AddRoleForUser(ctx context.Context, userID uint64, role string, domain string) error {
+func (s *authService) AddRoleForUser(ctx context.Context, userID string, role string, domain string) error {
 	// 构造用户标识
-	sub := fmt.Sprintf("user:%d", userID)
+	sub := fmt.Sprintf("user:%s", userID)
 
 	// 添加用户角色关联
 	_, err := s.enforcer.AddRoleForUser(sub, role, domain)
@@ -111,9 +111,9 @@ func (s *authService) AddRoleForUser(ctx context.Context, userID uint64, role st
 }
 
 // RemoveRoleForUser 移除用户角色
-func (s *authService) RemoveRoleForUser(ctx context.Context, userID uint64, role string, domain string) error {
+func (s *authService) RemoveRoleForUser(ctx context.Context, userID string, role string, domain string) error {
 	// 构造用户标识
-	sub := fmt.Sprintf("user:%d", userID)
+	sub := fmt.Sprintf("user:%s", userID)
 
 	// 移除用户角色关联
 	_, err := s.enforcer.DeleteRoleForUser(sub, role, domain)
@@ -236,7 +236,7 @@ func (s *authService) DeleteRole(ctx context.Context, id uint) error {
 // 用户角色关联部分实现
 
 // AssignRolesToUser 为用户分配角色
-func (s *authService) AssignRolesToUser(ctx context.Context, userID uint64, roleIDs []uint) error {
+func (s *authService) AssignRolesToUser(ctx context.Context, userID string, roleIDs []uint) error {
 	// 获取角色信息
 	var roles []entity.Role
 	for _, roleID := range roleIDs {
@@ -256,7 +256,7 @@ func (s *authService) AssignRolesToUser(ctx context.Context, userID uint64, role
 		}
 
 		// 同步到Casbin
-		sub := fmt.Sprintf("user:%d", userID)
+		sub := fmt.Sprintf("user:%s", userID)
 		for _, role := range roles {
 			// 为简单起见，这里使用全局域("0")
 			_, err = s.enforcer.AddRoleForUser(sub, role.Code, "0")
@@ -270,7 +270,7 @@ func (s *authService) AssignRolesToUser(ctx context.Context, userID uint64, role
 }
 
 // RemoveRolesFromUser 移除用户角色
-func (s *authService) RemoveRolesFromUser(ctx context.Context, userID uint64, roleIDs []uint) error {
+func (s *authService) RemoveRolesFromUser(ctx context.Context, userID string, roleIDs []uint) error {
 	// 获取角色信息
 	var roles []entity.Role
 	for _, roleID := range roleIDs {
@@ -290,7 +290,7 @@ func (s *authService) RemoveRolesFromUser(ctx context.Context, userID uint64, ro
 		}
 
 		// 同步到Casbin
-		sub := fmt.Sprintf("user:%d", userID)
+		sub := fmt.Sprintf("user:%s", userID)
 		for _, role := range roles {
 			// 为简单起见，这里使用全局域("0")
 			_, err = s.enforcer.DeleteRoleForUser(sub, role.Code, "0")
@@ -304,16 +304,16 @@ func (s *authService) RemoveRolesFromUser(ctx context.Context, userID uint64, ro
 }
 
 // GetUserRoles 获取用户角色
-func (s *authService) GetUserRoles(ctx context.Context, userID uint64) ([]entity.Role, error) {
+func (s *authService) GetUserRoles(ctx context.Context, userID string) ([]entity.Role, error) {
 	return s.userRepo.GetUserRoles(ctx, userID)
 }
 
 // 权限检查辅助方法
 
 // CanUserAccessResource 检查用户是否有权限访问资源
-func (s *authService) CanUserAccessResource(ctx context.Context, userID uint64, resourceType, action, domain string) (bool, error) {
+func (s *authService) CanUserAccessResource(ctx context.Context, userID string, resourceType, action, domain string) (bool, error) {
 	// 构造用户标识
-	sub := fmt.Sprintf("user:%d", userID)
+	sub := fmt.Sprintf("user:%s", userID)
 
 	// 直接检查用户权限
 	allowed, err := s.enforcer.Enforce(sub, domain, resourceType, action)
@@ -345,7 +345,7 @@ func (s *authService) CanUserAccessResource(ctx context.Context, userID uint64, 
 }
 
 // IsUserInRole 检查用户是否具有特定角色
-func (s *authService) IsUserInRole(ctx context.Context, userID uint64, roleCode string) (bool, error) {
+func (s *authService) IsUserInRole(ctx context.Context, userID string, roleCode string) (bool, error) {
 	// 获取用户角色
 	roles, err := s.userRepo.GetUserRoles(ctx, userID)
 	if err != nil {
@@ -403,50 +403,86 @@ func (s *authService) ListRoles(ctx context.Context, req *dto.RoleListRequest) (
 // 为控制器提供DTO适配方法
 
 // CreateRoleFromDTO 创建角色
-func (s *authService) CreateRoleFromDTO(ctx context.Context, req *dto.RoleCreateRequest, createdBy uint) error {
+func (s *authService) CreateRoleFromDTO(ctx context.Context, req *dto.RoleCreateRequest, createdBy string) error {
 	// 检查角色代码是否已存在
 	existRole, err := s.roleRepo.GetByCode(ctx, req.Code)
-	if err == nil && existRole != nil {
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	if existRole != nil {
 		return errors.New("角色代码已存在")
 	}
 
-	role := &entity.Role{
-		Name:        req.Name,
-		Description: req.Description,
-		Code:        req.Code,
-		Status:      1,     // 默认启用
-		IsSystem:    false, // 默认非系统角色
-		CreatedBy:   createdBy,
+	// 转换string类型的userID为uint
+	var createdByUint uint
+	_, err = fmt.Sscanf(createdBy, "%d", &createdByUint)
+	if err != nil {
+		return fmt.Errorf("用户ID格式错误: %w", err)
 	}
 
-	return s.roleRepo.Create(ctx, role)
+	// 创建角色
+	role := &entity.Role{
+		Name:        req.Name,
+		Code:        req.Code,
+		Description: req.Description,
+		Status:      entity.RoleStatusActive,
+		CreatedBy:   createdByUint,
+		UpdatedBy:   createdByUint,
+	}
+
+	err = s.roleRepo.Create(ctx, role)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // UpdateRoleFromDTO 更新角色
-func (s *authService) UpdateRoleFromDTO(ctx context.Context, req *dto.RoleUpdateRequest, updatedBy uint) error {
+func (s *authService) UpdateRoleFromDTO(ctx context.Context, req *dto.RoleUpdateRequest, updatedBy string) error {
 	// 检查角色是否存在
 	existRole, err := s.roleRepo.GetByID(ctx, req.ID)
 	if err != nil {
+		return err
+	}
+	if existRole == nil {
 		return errors.New("角色不存在")
 	}
 
-	// 系统角色不允许修改代码（由于UpdateRequest中没有Code字段，系统角色直接保持原有代码）
-
-	role := &entity.Role{
-		ID:          req.ID,
-		Name:        req.Name,
-		Description: req.Description,
-		Code:        existRole.Code, // 使用现有角色的Code
-		Status:      req.Status,
-		IsSystem:    existRole.IsSystem, // 使用现有角色的IsSystem
-		UpdatedBy:   updatedBy,
+	// 检查角色代码唯一性
+	if req.Code != existRole.Code {
+		roleByCode, err := s.roleRepo.GetByCode(ctx, req.Code)
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		if roleByCode != nil {
+			return errors.New("角色代码已存在")
+		}
 	}
 
-	return s.roleRepo.Update(ctx, role)
+	// 转换string类型的userID为uint
+	var updatedByUint uint
+	_, err = fmt.Sscanf(updatedBy, "%d", &updatedByUint)
+	if err != nil {
+		return fmt.Errorf("用户ID格式错误: %w", err)
+	}
+
+	// 更新角色
+	existRole.Name = req.Name
+	existRole.Code = req.Code
+	existRole.Description = req.Description
+	existRole.UpdatedBy = updatedByUint
+
+	err = s.roleRepo.Update(ctx, existRole)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // CheckUserProjectPermission 检查用户是否拥有项目权限
-func (s *authService) CheckUserProjectPermission(ctx context.Context, userID, projectID uint64, allowedRoles []string) (bool, error) {
+func (s *authService) CheckUserProjectPermission(ctx context.Context, userID, projectID string, allowedRoles []string) (bool, error) {
 	// 先检查是否为系统管理员
 	isAdmin, err := s.IsUserInRole(ctx, userID, "ADMIN")
 	if err != nil {
@@ -515,7 +551,7 @@ func (s *authService) CheckUserProjectPermission(ctx context.Context, userID, pr
 }
 
 // IsProjectAdmin 检查用户是否为项目管理员
-func (s *authService) IsProjectAdmin(ctx context.Context, userID, projectID uint64) (bool, error) {
+func (s *authService) IsProjectAdmin(ctx context.Context, userID, projectID string) (bool, error) {
 	// 先检查是否为系统管理员
 	isAdmin, err := s.IsUserInRole(ctx, userID, "ADMIN")
 	if err != nil {

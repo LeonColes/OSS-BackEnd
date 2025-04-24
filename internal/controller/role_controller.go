@@ -50,7 +50,7 @@ func (c *RoleController) CreateRole(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnauthorized, common.ErrorResponse("未授权"))
 		return
 	}
-	createdBy := uint(userIDValue.(uint64))
+	createdBy := userIDValue.(string)
 
 	err := c.authService.CreateRoleFromDTO(ctx, &req, createdBy)
 	if err != nil {
@@ -88,7 +88,7 @@ func (c *RoleController) UpdateRole(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnauthorized, common.ErrorResponse("未授权"))
 		return
 	}
-	updatedBy := uint(userIDValue.(uint64))
+	updatedBy := userIDValue.(string)
 
 	err := c.authService.UpdateRoleFromDTO(ctx, &req, updatedBy)
 	if err != nil {

@@ -3,7 +3,6 @@ package middleware
 import (
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/casbin/casbin/v2"
@@ -108,39 +107,33 @@ func (m *AuthMiddleware) checkSystemPermission(c *gin.Context, userIDValue inter
 
 // 群组级权限检查
 func (m *AuthMiddleware) checkGroupPermission(c *gin.Context, userIDValue interface{}, resourceType string) {
-	userID := userIDValue.(uint64)
+	userID := userIDValue.(string)
 
 	// 获取群组ID
-	var groupID uint64
+	var groupID string
 
 	// 首先尝试从路径参数获取
 	groupIDStr := c.Param("id")
 	if groupIDStr != "" {
-		id, err := strconv.ParseUint(groupIDStr, 10, 64)
-		if err == nil {
-			groupID = id
-		}
+		groupID = groupIDStr
 	}
 
 	// 如果路径没有，尝试从查询参数获取
-	if groupID == 0 {
+	if groupID == "" {
 		groupIDStr = c.Query("group_id")
 		if groupIDStr != "" {
-			id, err := strconv.ParseUint(groupIDStr, 10, 64)
-			if err == nil {
-				groupID = id
-			}
+			groupID = groupIDStr
 		}
 	}
 
 	// 如果没有群组ID，则跳过权限检查
-	if groupID == 0 {
+	if groupID == "" {
 		c.Next()
 		return
 	}
 
 	// 构造域标识
-	domain := fmt.Sprintf("group:%d", groupID)
+	domain := fmt.Sprintf("group:%s", groupID)
 
 	// 构造资源和操作
 	var resource string
@@ -160,7 +153,7 @@ func (m *AuthMiddleware) checkGroupPermission(c *gin.Context, userIDValue interf
 	act := utils.MapMethodToAction(c.Request.Method)
 
 	// 构造用户标识
-	sub := fmt.Sprintf("user:%d", userID)
+	sub := fmt.Sprintf("user:%s", userID)
 
 	// 检查用户直接权限
 	allowed, err := m.authService.CheckPermission(sub, domain, resource, act)
@@ -193,39 +186,33 @@ func (m *AuthMiddleware) checkGroupPermission(c *gin.Context, userIDValue interf
 
 // 项目级权限检查
 func (m *AuthMiddleware) checkProjectPermission(c *gin.Context, userIDValue interface{}, resourceType string) {
-	userID := userIDValue.(uint64)
+	userID := userIDValue.(string)
 
 	// 获取项目ID
-	var projectID uint64
+	var projectID string
 
 	// 首先尝试从路径参数获取
 	projectIDStr := c.Param("id")
 	if projectIDStr != "" {
-		id, err := strconv.ParseUint(projectIDStr, 10, 64)
-		if err == nil {
-			projectID = id
-		}
+		projectID = projectIDStr
 	}
 
 	// 如果路径没有，尝试从查询参数获取
-	if projectID == 0 {
+	if projectID == "" {
 		projectIDStr = c.Query("project_id")
 		if projectIDStr != "" {
-			id, err := strconv.ParseUint(projectIDStr, 10, 64)
-			if err == nil {
-				projectID = id
-			}
+			projectID = projectIDStr
 		}
 	}
 
 	// 如果没有项目ID，则跳过权限检查
-	if projectID == 0 {
+	if projectID == "" {
 		c.Next()
 		return
 	}
 
 	// 构造域标识
-	domain := fmt.Sprintf("project:%d", projectID)
+	domain := fmt.Sprintf("project:%s", projectID)
 
 	// 构造资源和操作
 	var resource string
@@ -245,7 +232,7 @@ func (m *AuthMiddleware) checkProjectPermission(c *gin.Context, userIDValue inte
 	act := utils.MapMethodToAction(c.Request.Method)
 
 	// 构造用户标识
-	sub := fmt.Sprintf("user:%d", userID)
+	sub := fmt.Sprintf("user:%s", userID)
 
 	// 检查用户直接权限
 	allowed, err := m.authService.CheckPermission(sub, domain, resource, act)
@@ -287,7 +274,7 @@ func (m *AuthMiddleware) RequireRole(roleName string) gin.HandlerFunc {
 			return
 		}
 
-		userID := userIDValue.(uint64)
+		userID := userIDValue.(string)
 
 		// 获取用户角色
 		roles, err := m.userRepo.GetUserRoles(c, userID)
@@ -327,7 +314,7 @@ func (m *AuthMiddleware) RequireAnyRole(roleNames ...string) gin.HandlerFunc {
 			return
 		}
 
-		userID := userIDValue.(uint64)
+		userID := userIDValue.(string)
 
 		// 获取用户角色
 		roles, err := m.userRepo.GetUserRoles(c, userID)
@@ -442,7 +429,7 @@ func (m *AuthMiddleware) Authorize(obj string, act string, getDomainIDFunc func(
 			c.Abort()
 			return
 		}
-		userID := userIDValue.(uint64)
+		userID := userIDValue.(string)
 
 		// 获取域标识
 		domainID, err := getDomainIDFunc(c)
@@ -459,7 +446,7 @@ func (m *AuthMiddleware) Authorize(obj string, act string, getDomainIDFunc func(
 		}
 
 		// 构造用户标识
-		sub := fmt.Sprintf("user:%d", userID)
+		sub := fmt.Sprintf("user:%s", userID)
 
 		// 检查用户直接权限
 		allowed, err := m.authService.CheckPermission(sub, domainID, obj, act)

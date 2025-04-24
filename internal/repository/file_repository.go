@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"oss-backend/internal/model/entity"
+	"oss-backend/internal/utils"
 	"strings"
 
 	"gorm.io/gorm"
@@ -13,28 +14,28 @@ import (
 type FileRepository interface {
 	// 基础CRUD操作
 	Create(ctx context.Context, file *entity.File) error
-	GetByID(ctx context.Context, id uint64) (*entity.File, error)
+	GetByID(ctx context.Context, id string) (*entity.File, error)
 	Update(ctx context.Context, file *entity.File) error
-	Delete(ctx context.Context, id uint64) error
+	Delete(ctx context.Context, id string) error
 
 	// 文件列表操作
-	List(ctx context.Context, projectID uint64, path string, recursive bool, includeDeleted bool, page, pageSize int) ([]*entity.File, int64, error)
-	ListByIDs(ctx context.Context, ids []uint64) ([]*entity.File, error)
+	List(ctx context.Context, projectID string, path string, recursive bool, includeDeleted bool, page, pageSize int) ([]*entity.File, int64, error)
+	ListByIDs(ctx context.Context, ids []string) ([]*entity.File, error)
 
 	// 特定查询方法
 	GetByHash(ctx context.Context, hash string) (*entity.File, error)
-	GetByPath(ctx context.Context, projectID uint64, path string, fileName string) (*entity.File, error)
+	GetByPath(ctx context.Context, projectID string, path string, fileName string) (*entity.File, error)
 
 	// 版本管理
 	CreateVersion(ctx context.Context, version *entity.FileVersion) error
-	GetVersions(ctx context.Context, fileID uint64) ([]*entity.FileVersion, error)
-	GetVersionByID(ctx context.Context, fileID uint64, version int) (*entity.FileVersion, error)
+	GetVersions(ctx context.Context, fileID string) ([]*entity.FileVersion, error)
+	GetVersionByID(ctx context.Context, fileID string, version int) (*entity.FileVersion, error)
 
 	// 分享管理
 	CreateShare(ctx context.Context, share *entity.FileShare) error
 	GetShareByCode(ctx context.Context, code string) (*entity.FileShare, error)
-	UpdateShareDownloadCount(ctx context.Context, shareID uint64) error
-	DeleteShare(ctx context.Context, id uint64) error
+	UpdateShareDownloadCount(ctx context.Context, shareID string) error
+	DeleteShare(ctx context.Context, id string) error
 }
 
 // fileRepository 文件仓库实现
@@ -51,13 +52,16 @@ func NewFileRepository(db *gorm.DB) FileRepository {
 
 // Create 创建文件记录
 func (r *fileRepository) Create(ctx context.Context, file *entity.File) error {
+	if file.ID == "" {
+		file.ID = utils.GenerateFileID()
+	}
 	return r.db.WithContext(ctx).Create(file).Error
 }
 
 // GetByID 根据ID获取文件
-func (r *fileRepository) GetByID(ctx context.Context, id uint64) (*entity.File, error) {
+func (r *fileRepository) GetByID(ctx context.Context, id string) (*entity.File, error) {
 	var file entity.File
-	err := r.db.WithContext(ctx).First(&file, id).Error
+	err := r.db.WithContext(ctx).Where("id = ?", id).First(&file).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
@@ -73,12 +77,12 @@ func (r *fileRepository) Update(ctx context.Context, file *entity.File) error {
 }
 
 // Delete 删除文件（软删除）
-func (r *fileRepository) Delete(ctx context.Context, id uint64) error {
+func (r *fileRepository) Delete(ctx context.Context, id string) error {
 	return r.db.WithContext(ctx).Model(&entity.File{}).Where("id = ?", id).Update("is_deleted", true).Error
 }
 
 // List 获取文件列表
-func (r *fileRepository) List(ctx context.Context, projectID uint64, path string, recursive bool, includeDeleted bool, page, pageSize int) ([]*entity.File, int64, error) {
+func (r *fileRepository) List(ctx context.Context, projectID string, path string, recursive bool, includeDeleted bool, page, pageSize int) ([]*entity.File, int64, error) {
 	var files []*entity.File
 	var total int64
 
@@ -128,7 +132,7 @@ func (r *fileRepository) List(ctx context.Context, projectID uint64, path string
 }
 
 // ListByIDs 根据ID列表获取文件
-func (r *fileRepository) ListByIDs(ctx context.Context, ids []uint64) ([]*entity.File, error) {
+func (r *fileRepository) ListByIDs(ctx context.Context, ids []string) ([]*entity.File, error) {
 	var files []*entity.File
 	err := r.db.WithContext(ctx).Where("id IN ?", ids).Find(&files).Error
 	return files, err
@@ -148,7 +152,7 @@ func (r *fileRepository) GetByHash(ctx context.Context, hash string) (*entity.Fi
 }
 
 // GetByPath 根据路径和名称获取文件
-func (r *fileRepository) GetByPath(ctx context.Context, projectID uint64, path string, fileName string) (*entity.File, error) {
+func (r *fileRepository) GetByPath(ctx context.Context, projectID string, path string, fileName string) (*entity.File, error) {
 	var file entity.File
 
 	// 确保路径以/结尾
@@ -173,18 +177,21 @@ func (r *fileRepository) GetByPath(ctx context.Context, projectID uint64, path s
 
 // CreateVersion 创建文件版本
 func (r *fileRepository) CreateVersion(ctx context.Context, version *entity.FileVersion) error {
+	if version.ID == "" {
+		version.ID = utils.GenerateRecordID()
+	}
 	return r.db.WithContext(ctx).Create(version).Error
 }
 
 // GetVersions 获取文件所有版本
-func (r *fileRepository) GetVersions(ctx context.Context, fileID uint64) ([]*entity.FileVersion, error) {
+func (r *fileRepository) GetVersions(ctx context.Context, fileID string) ([]*entity.FileVersion, error) {
 	var versions []*entity.FileVersion
 	err := r.db.WithContext(ctx).Where("file_id = ?", fileID).Order("version DESC").Find(&versions).Error
 	return versions, err
 }
 
 // GetVersionByID 获取文件特定版本
-func (r *fileRepository) GetVersionByID(ctx context.Context, fileID uint64, version int) (*entity.FileVersion, error) {
+func (r *fileRepository) GetVersionByID(ctx context.Context, fileID string, version int) (*entity.FileVersion, error) {
 	var fileVersion entity.FileVersion
 	err := r.db.WithContext(ctx).Where("file_id = ? AND version = ?", fileID, version).First(&fileVersion).Error
 	if err != nil {
@@ -198,6 +205,9 @@ func (r *fileRepository) GetVersionByID(ctx context.Context, fileID uint64, vers
 
 // CreateShare 创建文件分享
 func (r *fileRepository) CreateShare(ctx context.Context, share *entity.FileShare) error {
+	if share.ID == "" {
+		share.ID = utils.GenerateRecordID()
+	}
 	return r.db.WithContext(ctx).Create(share).Error
 }
 
@@ -211,23 +221,18 @@ func (r *fileRepository) GetShareByCode(ctx context.Context, code string) (*enti
 		}
 		return nil, err
 	}
-
-	// 预加载文件信息
-	err = r.db.WithContext(ctx).Model(&share).Association("File").Find(&share.File)
-	if err != nil {
-		return nil, err
-	}
-
 	return &share, nil
 }
 
-// UpdateShareDownloadCount 更新分享下载次数
-func (r *fileRepository) UpdateShareDownloadCount(ctx context.Context, shareID uint64) error {
-	return r.db.WithContext(ctx).Model(&entity.FileShare{}).Where("id = ?", shareID).
-		UpdateColumn("download_count", gorm.Expr("download_count + ?", 1)).Error
+// UpdateShareDownloadCount 更新下载计数
+func (r *fileRepository) UpdateShareDownloadCount(ctx context.Context, shareID string) error {
+	return r.db.WithContext(ctx).Model(&entity.FileShare{}).
+		Where("id = ?", shareID).
+		UpdateColumn("download_count", gorm.Expr("download_count + ?", 1)).
+		Error
 }
 
 // DeleteShare 删除分享
-func (r *fileRepository) DeleteShare(ctx context.Context, id uint64) error {
-	return r.db.WithContext(ctx).Delete(&entity.FileShare{}, id).Error
+func (r *fileRepository) DeleteShare(ctx context.Context, id string) error {
+	return r.db.WithContext(ctx).Delete(&entity.FileShare{}, "id = ?", id).Error
 }

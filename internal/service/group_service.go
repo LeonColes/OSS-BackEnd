@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"time"
 
@@ -13,24 +15,24 @@ import (
 // GroupService 群组服务接口
 type GroupService interface {
 	// 群组管理
-	CreateGroup(ctx context.Context, req *dto.GroupCreateRequest, creatorID uint64) error
-	UpdateGroup(ctx context.Context, req *dto.GroupUpdateRequest, updaterID uint64) error
-	GetGroupByID(ctx context.Context, id uint64, userID uint64) (*dto.GroupResponse, error)
-	ListGroups(ctx context.Context, req *dto.GroupListRequest, userID uint64) (*dto.GroupListResponse, error)
+	CreateGroup(ctx context.Context, req *dto.GroupCreateRequest, creatorID string) error
+	UpdateGroup(ctx context.Context, req *dto.GroupUpdateRequest, updaterID string) error
+	GetGroupByID(ctx context.Context, id string, userID string) (*dto.GroupResponse, error)
+	ListGroups(ctx context.Context, req *dto.GroupListRequest, userID string) (*dto.GroupListResponse, error)
 
 	// 成员管理
-	JoinGroup(ctx context.Context, req *dto.GroupJoinRequest, userID uint64) error
-	AddMember(ctx context.Context, groupID uint64, userID uint64, role string, operatorID uint64) error
-	UpdateMemberRole(ctx context.Context, groupID uint64, req *dto.GroupMemberUpdateRequest, operatorID uint64) error
-	RemoveMember(ctx context.Context, groupID uint64, userID uint64, operatorID uint64) error
-	ListMembers(ctx context.Context, groupID uint64, page, size int) (*dto.GroupMemberListResponse, error)
+	JoinGroup(ctx context.Context, req *dto.GroupJoinRequest, userID string) error
+	AddMember(ctx context.Context, groupID string, userID string, role string, operatorID string) error
+	UpdateMemberRole(ctx context.Context, groupID string, req *dto.GroupMemberUpdateRequest, operatorID string) error
+	RemoveMember(ctx context.Context, groupID string, userID string, operatorID string) error
+	ListMembers(ctx context.Context, groupID string, page, size int) (*dto.GroupMemberListResponse, error)
 
 	// 用户群组
-	GetUserGroups(ctx context.Context, userID uint64) ([]dto.GroupResponse, error)
-	CheckUserGroupRole(ctx context.Context, groupID uint64, userID uint64) (string, error)
+	GetUserGroups(ctx context.Context, userID string) ([]dto.GroupResponse, error)
+	CheckUserGroupRole(ctx context.Context, groupID string, userID string) (string, error)
 
 	// 邀请码
-	GenerateInviteCode(ctx context.Context, req *dto.GroupInviteRequest, userID uint64) (*dto.GroupInviteResponse, error)
+	GenerateInviteCode(ctx context.Context, req *dto.GroupInviteRequest, userID string) (*dto.GroupInviteResponse, error)
 }
 
 // groupService 群组服务实现
@@ -50,7 +52,7 @@ func NewGroupService(groupRepo repository.GroupRepository, userRepo repository.U
 }
 
 // CreateGroup 创建群组
-func (s *groupService) CreateGroup(ctx context.Context, req *dto.GroupCreateRequest, creatorID uint64) error {
+func (s *groupService) CreateGroup(ctx context.Context, req *dto.GroupCreateRequest, creatorID string) error {
 	// 检查群组标识是否已存在
 	existingGroup, err := s.groupRepo.GetGroupByKey(ctx, req.GroupKey)
 	if err != nil {
@@ -60,6 +62,9 @@ func (s *groupService) CreateGroup(ctx context.Context, req *dto.GroupCreateRequ
 		return fmt.Errorf("群组标识已存在")
 	}
 
+	// 生成群组标识
+	groupKey := generateGroupKey(req.Name)
+
 	// 生成邀请码
 	inviteCode := generateInviteCode()
 	expireAt := time.Now().AddDate(0, 0, 30) // 默认30天
@@ -68,7 +73,7 @@ func (s *groupService) CreateGroup(ctx context.Context, req *dto.GroupCreateRequ
 	group := &entity.Group{
 		Name:            req.Name,
 		Description:     req.Description,
-		GroupKey:        req.GroupKey,
+		GroupKey:        groupKey,
 		InviteCode:      inviteCode,
 		InviteExpiresAt: &expireAt,
 		CreatorID:       creatorID,
@@ -93,7 +98,7 @@ func (s *groupService) CreateGroup(ctx context.Context, req *dto.GroupCreateRequ
 }
 
 // UpdateGroup 更新群组
-func (s *groupService) UpdateGroup(ctx context.Context, req *dto.GroupUpdateRequest, updaterID uint64) error {
+func (s *groupService) UpdateGroup(ctx context.Context, req *dto.GroupUpdateRequest, updaterID string) error {
 	// 获取群组
 	group, err := s.groupRepo.GetGroupByID(ctx, req.ID)
 	if err != nil {
@@ -120,20 +125,20 @@ func (s *groupService) UpdateGroup(ctx context.Context, req *dto.GroupUpdateRequ
 }
 
 // GetGroupByID 根据ID获取群组
-func (s *groupService) GetGroupByID(ctx context.Context, id uint64, userID uint64) (*dto.GroupResponse, error) {
+func (s *groupService) GetGroupByID(ctx context.Context, id string, userID string) (*dto.GroupResponse, error) {
 	// 获取群组
 	group, err := s.groupRepo.GetGroupByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 
-	// 获取用户角色
-	userRole, _ := s.CheckUserGroupRole(ctx, id, userID)
-
 	// 获取统计信息
 	memberCount, _ := s.groupRepo.GetMemberCount(ctx, id)
 	projectCount, _ := s.groupRepo.GetProjectCount(ctx, id)
 	storageUsed, _ := s.groupRepo.GetStorageUsed(ctx, id)
+
+	// 获取用户在群组中的角色
+	userRole, _ := s.CheckUserGroupRole(ctx, id, userID)
 
 	// 构建响应
 	response := &dto.GroupResponse{
@@ -152,7 +157,7 @@ func (s *groupService) GetGroupByID(ctx context.Context, id uint64, userID uint6
 	}
 
 	// 添加创建者信息
-	if group.Creator.ID > 0 {
+	if len(group.Creator.ID) > 0 {
 		response.CreatorName = group.Creator.Name
 	}
 
@@ -165,7 +170,7 @@ func (s *groupService) GetGroupByID(ctx context.Context, id uint64, userID uint6
 }
 
 // ListGroups 获取群组列表
-func (s *groupService) ListGroups(ctx context.Context, req *dto.GroupListRequest, userID uint64) (*dto.GroupListResponse, error) {
+func (s *groupService) ListGroups(ctx context.Context, req *dto.GroupListRequest, userID string) (*dto.GroupListResponse, error) {
 	// 获取数据
 	groups, total, err := s.groupRepo.ListGroups(ctx, req)
 	if err != nil {
@@ -202,7 +207,7 @@ func (s *groupService) ListGroups(ctx context.Context, req *dto.GroupListRequest
 			UserRole:     userRole,
 		}
 
-		if group.Creator.ID > 0 {
+		if len(group.Creator.ID) > 0 {
 			item.CreatorName = group.Creator.Name
 		}
 
@@ -218,7 +223,7 @@ func (s *groupService) ListGroups(ctx context.Context, req *dto.GroupListRequest
 }
 
 // JoinGroup 加入群组
-func (s *groupService) JoinGroup(ctx context.Context, req *dto.GroupJoinRequest, userID uint64) error {
+func (s *groupService) JoinGroup(ctx context.Context, req *dto.GroupJoinRequest, userID string) error {
 	// 根据邀请码获取群组
 	group, err := s.groupRepo.GetGroupByInviteCode(ctx, req.InviteCode)
 	if err != nil {
@@ -247,7 +252,7 @@ func (s *groupService) JoinGroup(ctx context.Context, req *dto.GroupJoinRequest,
 }
 
 // AddMember 添加成员
-func (s *groupService) AddMember(ctx context.Context, groupID uint64, userID uint64, role string, operatorID uint64) error {
+func (s *groupService) AddMember(ctx context.Context, groupID string, userID string, role string, operatorID string) error {
 	// 检查群组是否存在
 	if _, err := s.groupRepo.GetGroupByID(ctx, groupID); err != nil {
 		return err
@@ -293,7 +298,7 @@ func (s *groupService) AddMember(ctx context.Context, groupID uint64, userID uin
 }
 
 // UpdateMemberRole 更新成员角色
-func (s *groupService) UpdateMemberRole(ctx context.Context, groupID uint64, req *dto.GroupMemberUpdateRequest, operatorID uint64) error {
+func (s *groupService) UpdateMemberRole(ctx context.Context, groupID string, req *dto.GroupMemberUpdateRequest, operatorID string) error {
 	// 检查操作者是否为群组管理员
 	operatorRole, err := s.CheckUserGroupRole(ctx, groupID, operatorID)
 	if err != nil {
@@ -325,7 +330,7 @@ func (s *groupService) UpdateMemberRole(ctx context.Context, groupID uint64, req
 }
 
 // RemoveMember 移除成员
-func (s *groupService) RemoveMember(ctx context.Context, groupID uint64, userID uint64, operatorID uint64) error {
+func (s *groupService) RemoveMember(ctx context.Context, groupID string, userID string, operatorID string) error {
 	// 检查操作者是否为群组管理员
 	operatorRole, err := s.CheckUserGroupRole(ctx, groupID, operatorID)
 	if err != nil {
@@ -353,7 +358,7 @@ func (s *groupService) RemoveMember(ctx context.Context, groupID uint64, userID 
 }
 
 // ListMembers 获取成员列表
-func (s *groupService) ListMembers(ctx context.Context, groupID uint64, page, size int) (*dto.GroupMemberListResponse, error) {
+func (s *groupService) ListMembers(ctx context.Context, groupID string, page, size int) (*dto.GroupMemberListResponse, error) {
 	// 获取数据
 	members, total, err := s.groupRepo.ListMembers(ctx, groupID, page, size)
 	if err != nil {
@@ -375,7 +380,7 @@ func (s *groupService) ListMembers(ctx context.Context, groupID uint64, page, si
 			LastActiveAt: member.LastActiveAt,
 		}
 
-		if member.User.ID > 0 {
+		if len(member.User.ID) > 0 {
 			item.UserName = member.User.Name
 			item.Email = member.User.Email
 			item.Avatar = member.User.Avatar
@@ -388,7 +393,7 @@ func (s *groupService) ListMembers(ctx context.Context, groupID uint64, page, si
 }
 
 // GetUserGroups 获取用户所属的群组
-func (s *groupService) GetUserGroups(ctx context.Context, userID uint64) ([]dto.GroupResponse, error) {
+func (s *groupService) GetUserGroups(ctx context.Context, userID string) ([]dto.GroupResponse, error) {
 	// 获取数据
 	groups, err := s.groupRepo.GetUserGroups(ctx, userID)
 	if err != nil {
@@ -422,7 +427,7 @@ func (s *groupService) GetUserGroups(ctx context.Context, userID uint64) ([]dto.
 			UserRole:     userRole,
 		}
 
-		if group.Creator.ID > 0 {
+		if len(group.Creator.ID) > 0 {
 			item.CreatorName = group.Creator.Name
 		}
 
@@ -438,7 +443,7 @@ func (s *groupService) GetUserGroups(ctx context.Context, userID uint64) ([]dto.
 }
 
 // CheckUserGroupRole 检查用户在群组中的角色
-func (s *groupService) CheckUserGroupRole(ctx context.Context, groupID uint64, userID uint64) (string, error) {
+func (s *groupService) CheckUserGroupRole(ctx context.Context, groupID string, userID string) (string, error) {
 	member, err := s.groupRepo.GetMember(ctx, groupID, userID)
 	if err != nil {
 		return "", err
@@ -450,7 +455,7 @@ func (s *groupService) CheckUserGroupRole(ctx context.Context, groupID uint64, u
 }
 
 // GenerateInviteCode 生成邀请码
-func (s *groupService) GenerateInviteCode(ctx context.Context, req *dto.GroupInviteRequest, userID uint64) (*dto.GroupInviteResponse, error) {
+func (s *groupService) GenerateInviteCode(ctx context.Context, req *dto.GroupInviteRequest, userID string) (*dto.GroupInviteResponse, error) {
 	// 检查用户是否为群组管理员
 	role, err := s.CheckUserGroupRole(ctx, req.GroupID, userID)
 	if err != nil {
@@ -487,4 +492,19 @@ func (s *groupService) GenerateInviteCode(ctx context.Context, req *dto.GroupInv
 func generateInviteCode() string {
 	// 简单实现，实际项目中应该使用更复杂的算法
 	return fmt.Sprintf("%d", time.Now().UnixNano())
+}
+
+// 根据群组名生成唯一标识
+func generateGroupKey(name string) string {
+	// 生成随机字节
+	b := make([]byte, 8)
+	_, err := rand.Read(b)
+	if err != nil {
+		// 如果随机失败，使用时间戳
+		return fmt.Sprintf("%s_%d", name, time.Now().UnixNano())
+	}
+
+	// 编码为Base64
+	encoded := base64.URLEncoding.EncodeToString(b)
+	return fmt.Sprintf("%s_%s", name, encoded[:8])
 }

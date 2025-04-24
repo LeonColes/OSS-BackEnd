@@ -98,7 +98,7 @@ func (c *UserController) GetUserInfo(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnauthorized, common.ErrorResponse("未授权"))
 		return
 	}
-	userID := userIDValue.(uint64)
+	userID := userIDValue.(string)
 
 	userInfo, err := c.userService.GetUserInfo(ctx, userID)
 	if err != nil {
@@ -135,7 +135,7 @@ func (c *UserController) UpdateUserInfo(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnauthorized, common.ErrorResponse("未授权"))
 		return
 	}
-	userID := userIDValue.(uint64)
+	userID := userIDValue.(string)
 
 	err := c.userService.UpdateUserInfo(ctx, userID, &req)
 	if err != nil {
@@ -172,7 +172,7 @@ func (c *UserController) UpdatePassword(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnauthorized, common.ErrorResponse("未授权"))
 		return
 	}
-	userID := userIDValue.(uint64)
+	userID := userIDValue.(string)
 
 	err := c.userService.UpdatePassword(ctx, userID, &req)
 	if err != nil {
@@ -232,11 +232,7 @@ func (c *UserController) ListUsers(ctx *gin.Context) {
 func (c *UserController) UpdateUserStatus(ctx *gin.Context) {
 	// 解析用户ID
 	idStr := ctx.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 64)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, common.ErrorResponse("无效的用户ID"))
-		return
-	}
+	id := idStr
 
 	// 解析状态
 	statusStr := ctx.Query("status")
@@ -271,11 +267,7 @@ func (c *UserController) UpdateUserStatus(ctx *gin.Context) {
 func (c *UserController) GetUserRoles(ctx *gin.Context) {
 	// 解析用户ID
 	idStr := ctx.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 64)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, common.ErrorResponse("无效的用户ID"))
-		return
-	}
+	id := idStr
 
 	roles, err := c.userService.GetUserRoles(ctx, id)
 	if err != nil {
@@ -303,11 +295,7 @@ func (c *UserController) GetUserRoles(ctx *gin.Context) {
 func (c *UserController) AssignRoles(ctx *gin.Context) {
 	// 解析用户ID
 	idStr := ctx.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 64)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, common.ErrorResponse("无效的用户ID"))
-		return
-	}
+	id := idStr
 
 	// 解析角色ID列表
 	var roleIDs []uint
@@ -316,7 +304,7 @@ func (c *UserController) AssignRoles(ctx *gin.Context) {
 		return
 	}
 
-	err = c.userService.AssignRoles(ctx, id, roleIDs)
+	err := c.userService.AssignRoles(ctx, id, roleIDs)
 	if err != nil {
 		ctx.JSON(http.StatusBadRequest, common.ErrorResponse(err.Error()))
 		return
@@ -342,11 +330,7 @@ func (c *UserController) AssignRoles(ctx *gin.Context) {
 func (c *UserController) RemoveRoles(ctx *gin.Context) {
 	// 解析用户ID
 	idStr := ctx.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 64)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, common.ErrorResponse("无效的用户ID"))
-		return
-	}
+	id := idStr
 
 	// 解析角色ID列表
 	var roleIDs []uint
@@ -355,7 +339,7 @@ func (c *UserController) RemoveRoles(ctx *gin.Context) {
 		return
 	}
 
-	err = c.userService.RemoveRoles(ctx, id, roleIDs)
+	err := c.userService.RemoveRoles(ctx, id, roleIDs)
 	if err != nil {
 		ctx.JSON(http.StatusBadRequest, common.ErrorResponse(err.Error()))
 		return

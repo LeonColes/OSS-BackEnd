@@ -29,3 +29,9 @@ const (
 	RoleGroupAdmin = "GROUP_ADMIN" // 群组管理员
 	RoleMember     = "MEMBER"      // 普通成员
 )
+
+// 角色状态常量
+const (
+	RoleStatusActive   = 1 // 启用
+	RoleStatusInactive = 0 // 禁用
+)

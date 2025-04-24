@@ -59,7 +59,7 @@ func SetupRouter(r *gin.Engine, db interface{}) {
 	apiGroup := r.Group("/api/oss")
 
 	// 注册角色相关路由
-	registerRoleRoutes(apiGroup, gormDB, jwtMiddleware, authMiddleware, authSvc)
+	registerRoleRoutes(apiGroup, jwtMiddleware, authMiddleware, authSvc)
 
 	// 注册用户相关路由
 	registerUserRoutes(apiGroup, gormDB, jwtMiddleware, authMiddleware, authSvc)
@@ -77,7 +77,6 @@ func SetupRouter(r *gin.Engine, db interface{}) {
 // 注册角色相关路由
 func registerRoleRoutes(
 	apiGroup *gin.RouterGroup,
-	db *gorm.DB,
 	jwtMiddleware *middleware.JWTAuthMiddleware,
 	authMiddleware *middleware.AuthMiddleware,
 	authService service.AuthService,
@@ -200,6 +199,7 @@ func registerProjectRoutes(
 		groupRepo,
 		userRepo,
 		authService,
+		db,
 	)
 	projectController := controller.NewProjectController(projectService)
 

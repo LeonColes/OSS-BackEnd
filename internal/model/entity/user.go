@@ -6,7 +6,7 @@ import (
 
 // User 用户实体
 type User struct {
-	ID           uint       `gorm:"primaryKey" json:"id"`                       // 用户ID
+	ID           string     `gorm:"primaryKey;type:varchar(36)" json:"id"`      // 用户ID (UUID)
 	Email        string     `gorm:"size:100;not null;uniqueIndex" json:"email"` // 用户邮箱，登录凭证
 	Name         string     `gorm:"size:50;not null" json:"name"`               // 用户姓名
 	PasswordHash string     `gorm:"size:100;not null" json:"-"`                 // 密码哈希值，不返回给前端
@@ -40,9 +40,9 @@ func (u *User) HideSensitiveInfo() {
 
 // UserRole 用户角色关联表
 type UserRole struct {
-	UserID    uint      `gorm:"primaryKey;column:user_id" json:"user_id"` // 用户ID
-	RoleID    uint      `gorm:"primaryKey;column:role_id" json:"role_id"` // 角色ID
-	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`         // 创建时间
+	UserID    string    `gorm:"primaryKey;type:varchar(36);column:user_id" json:"user_id"` // 用户ID
+	RoleID    uint      `gorm:"primaryKey;column:role_id" json:"role_id"`                  // 角色ID
+	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`                          // 创建时间
 }
 
 // TableName 指定表名
