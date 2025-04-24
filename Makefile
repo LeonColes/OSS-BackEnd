@@ -1,4 +1,4 @@
-.PHONY: build run dev clean docker-build docker-compose init-db create-db swagger docs api-docs all-docs test test-build test-generate test-run
+.PHONY: build run dev clean mock test unit-test integration-test docker-build docker-compose init-db create-db swagger docs api-docs all-docs test-build test-generate test-run
 
 # 默认目标
 all: build
@@ -17,7 +17,34 @@ dev:
 
 # 清理构建文件
 clean:
+ifeq ($(OS),Windows_NT)
+	@echo "Cleaning build and mock directories on Windows..."
+	@if exist bin ( rd /s /q bin ) else ( echo Directory bin not found. )
+	@if exist mocks ( rd /s /q mocks ) else ( echo Directory mocks not found. )
+else
+	@echo "Cleaning build and mock directories on non-Windows..."
 	rm -rf bin/
+	rm -rf mocks/ # Clean root mocks directory
+endif
+	@echo "Clean completed."
+
+# 生成 Mock 文件 (使用 mockery)
+mock:
+	go install github.com/vektra/mockery/v2@latest
+	mockery --all --keeptree --with-expecter --outpkg=mocks --output=./mocks
+
+# 运行单元测试
+unit-test:
+	@echo "Running unit tests..."
+	go test ./... -v -cover
+
+# 运行集成测试 (示例，可能需要特定设置)
+integration-test:
+	@echo "Running integration tests (if any)..."
+
+# 运行所有测试 (单元测试 + 集成测试)
+test: unit-test integration-test mock test-build test-generate test-run
+	@echo "All tests completed."
 
 # 启动开发环境的数据库和服务
 dev-env-up:
@@ -119,17 +146,17 @@ else
 	@cd test && ./oss_tester -swagger ../docs/swagger/swagger.json -run
 endif
 
-# 一键完成测试流程：生成文档、构建测试工具、生成测试配置、运行测试
-test: swagger test-build test-generate test-run
-	@echo "测试流程已完成"
-
 # 帮助信息
 help:
 	@echo "可用命令:"
 	@echo "  make build          - 构建应用"
 	@echo "  make run            - 构建并运行应用"
 	@echo "  make dev            - 开发模式运行应用"
-	@echo "  make clean          - 清理构建文件"
+	@echo "  make clean          - 清理构建文件和根目录下的 mocks"
+	@echo "  make mock           - 在根目录 ./mocks 下生成单元测试所需的 mock 文件 (需要 mockery)"
+	@echo "  make unit-test      - 运行单元测试"
+	@echo "  make integration-test - 运行集成测试 (需要实现)"
+	@echo "  make test           - 运行所有测试 (单元 + 集成)"
 	@echo "  make dev-env-up     - 启动开发环境的数据库和服务"
 	@echo "  make dev-env-down   - 停止开发环境"
 	@echo "  make dev-env-reset  - 重置开发环境"
@@ -144,7 +171,7 @@ help:
 	@echo "  make code-docs      - 生成代码文档并启动godoc服务器"
 	@echo "  make all-docs       - 生成所有文档"
 	@echo "  make serve-docs     - 启动文档Web服务器"
-	@echo "  make test-build     - 构建测试工具"
-	@echo "  make test-generate  - 生成测试配置"
-	@echo "  make test-run       - 运行自动化测试"
-	@echo "  make test           - 一键执行完整测试流程" 
+	@echo "  --- Old test targets (may be deprecated) --- "
+	@echo "  make test-build     - 构建旧的测试工具"
+	@echo "  make test-generate  - 生成旧的测试配置"
+	@echo "  make test-run       - 运行旧的自动化测试" 

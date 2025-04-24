@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/casbin/casbin/v2"
 	"gorm.io/gorm"
@@ -54,17 +53,15 @@ type AuthService interface {
 	UpdateRoleFromDTO(ctx context.Context, req *dto.RoleUpdateRequest, updatedBy string) error
 
 	// 用户角色关联部分
-	AssignRolesToUser(ctx context.Context, userID string, roleIDs []uint) error
-	RemoveRolesFromUser(ctx context.Context, userID string, roleIDs []uint) error
+	AssignRolesToUser(ctx context.Context, userID string, roleIDs []uint, domain string) error
+	RemoveRolesFromUser(ctx context.Context, userID string, roleIDs []uint, domain string) error
 	GetUserRoles(ctx context.Context, userID string) ([]entity.Role, error)
 
 	// 权限检查辅助方法
 	CanUserAccessResource(ctx context.Context, userID string, resourceType, action, domain string) (bool, error)
-	IsUserInRole(ctx context.Context, userID string, roleCode string) (bool, error)
+	IsUserInRole(ctx context.Context, userID string, roleCode string, domain string) (bool, error)
 
 	// 项目权限检查方法
-	CheckUserProjectPermission(ctx context.Context, userID, projectID string, allowedRoles []string) (bool, error)
-	IsProjectAdmin(ctx context.Context, userID, projectID string) (bool, error)
 }
 
 // authService 认证授权服务实现
@@ -125,43 +122,20 @@ func (s *authService) GetRolesForUser(subject string, domain string) ([]string, 
 	return s.enforcer.GetRolesForUser(subject, domain)
 }
 
-// InitializeRBAC 初始化RBAC策略
+// InitializeRBAC 初始化RBAC（例如加载策略，确保Enforcer可用）
+// 移除硬编码的策略添加逻辑，策略应由 Casbin adapter 从持久化存储加载
 func (s *authService) InitializeRBAC() error {
-	// 添加默认角色的权限策略
-	policies := [][]string{
-		// 群组管理员权限
-		{"GROUP_ADMIN", "*", "projects", "create"},
-		{"GROUP_ADMIN", "*", "projects", "read"},
-		{"GROUP_ADMIN", "*", "projects", "update"},
-		{"GROUP_ADMIN", "*", "projects", "delete"},
-		{"GROUP_ADMIN", "*", "groups", "read"},
-		{"GROUP_ADMIN", "*", "groups", "update"},
-		{"GROUP_ADMIN", "*", "users", "read"},
-		{"GROUP_ADMIN", "*", "roles", "assign"},
-		{"GROUP_ADMIN", "*", "members", "add"},
-		{"GROUP_ADMIN", "*", "members", "remove"},
-		{"GROUP_ADMIN", "*", "files", "create"},
-		{"GROUP_ADMIN", "*", "files", "read"},
-		{"GROUP_ADMIN", "*", "files", "update"},
-		{"GROUP_ADMIN", "*", "files", "delete"},
-
-		// 普通成员权限
-		{"MEMBER", "*", "projects", "read"},
-		{"MEMBER", "*", "files", "create"},
-		{"MEMBER", "*", "files", "read"},
-		{"MEMBER", "*", "files", "update"},
-		{"MEMBER", "*", "files", "delete"},
+	// 确保 enforcer 已加载策略
+	if s.enforcer == nil {
+		return errors.New("casbin enforcer not initialized")
 	}
+	// 可以选择性地在此处添加非常基础的、全局的、固定的策略（如果需要）
+	// 例如：s.enforcer.AddPolicy(...) 但不推荐用于动态角色权限
 
-	// 清除现有策略
-	_, err := s.enforcer.RemoveFilteredPolicy(0, "GROUP_ADMIN", "MEMBER")
-	if err != nil {
-		return err
-	}
-
-	// 添加新策略
-	_, err = s.enforcer.AddPolicies(policies)
-	return err
+	// 通常策略加载由 Casbin Adapter 在创建 Enforcer 时完成
+	// 如果需要显式加载/重载：
+	// return s.enforcer.LoadPolicy()
+	return nil
 }
 
 // 角色服务部分实现
@@ -210,15 +184,26 @@ func (s *authService) UpdateRole(ctx context.Context, role *entity.Role) error {
 
 // DeleteRole 删除角色
 func (s *authService) DeleteRole(ctx context.Context, id uint) error {
-	// 检查角色是否存在
+	// 获取角色信息
 	role, err := s.roleRepo.GetByID(ctx, id)
 	if err != nil {
-		return errors.New("角色不存在")
+		return err
 	}
 
-	// 系统角色不允许删除
+	// 检查角色是否为系统内置角色
 	if role.IsSystem {
-		return errors.New("系统角色不允许删除")
+		return errors.New("系统内置角色不能删除")
+	}
+
+	// 如果 db 为 nil（测试环境），则直接执行不使用事务
+	if s.db == nil {
+		// 删除与该角色相关的Casbin规则
+		if err := s.casbinRepo.DeleteRoleRules(nil, role.Code); err != nil {
+			return err
+		}
+
+		// 删除角色
+		return s.roleRepo.Delete(ctx, id)
 	}
 
 	// 开启事务
@@ -236,7 +221,7 @@ func (s *authService) DeleteRole(ctx context.Context, id uint) error {
 // 用户角色关联部分实现
 
 // AssignRolesToUser 为用户分配角色
-func (s *authService) AssignRolesToUser(ctx context.Context, userID string, roleIDs []uint) error {
+func (s *authService) AssignRolesToUser(ctx context.Context, userID string, roleIDs []uint, domain string) error {
 	// 获取角色信息
 	var roles []entity.Role
 	for _, roleID := range roleIDs {
@@ -245,6 +230,26 @@ func (s *authService) AssignRolesToUser(ctx context.Context, userID string, role
 			return fmt.Errorf("角色ID %d 不存在", roleID)
 		}
 		roles = append(roles, *role)
+	}
+
+	// 如果 db 为 nil（测试环境），则直接执行不使用事务
+	if s.db == nil {
+		// 分配数据库中的用户角色关联
+		err := s.userRepo.AssignRoles(ctx, userID, roleIDs)
+		if err != nil {
+			return err
+		}
+
+		// 同步到Casbin
+		sub := fmt.Sprintf("user:%s", userID)
+		for _, role := range roles {
+			_, err = s.enforcer.AddRoleForUser(sub, role.Code, domain)
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
 	}
 
 	// 开启事务
@@ -258,8 +263,7 @@ func (s *authService) AssignRolesToUser(ctx context.Context, userID string, role
 		// 同步到Casbin
 		sub := fmt.Sprintf("user:%s", userID)
 		for _, role := range roles {
-			// 为简单起见，这里使用全局域("0")
-			_, err = s.enforcer.AddRoleForUser(sub, role.Code, "0")
+			_, err = s.enforcer.AddRoleForUser(sub, role.Code, domain)
 			if err != nil {
 				return err
 			}
@@ -270,7 +274,7 @@ func (s *authService) AssignRolesToUser(ctx context.Context, userID string, role
 }
 
 // RemoveRolesFromUser 移除用户角色
-func (s *authService) RemoveRolesFromUser(ctx context.Context, userID string, roleIDs []uint) error {
+func (s *authService) RemoveRolesFromUser(ctx context.Context, userID string, roleIDs []uint, domain string) error {
 	// 获取角色信息
 	var roles []entity.Role
 	for _, roleID := range roleIDs {
@@ -279,6 +283,26 @@ func (s *authService) RemoveRolesFromUser(ctx context.Context, userID string, ro
 			return fmt.Errorf("角色ID %d 不存在", roleID)
 		}
 		roles = append(roles, *role)
+	}
+
+	// 如果 db 为 nil（测试环境），则直接执行不使用事务
+	if s.db == nil {
+		// 移除数据库中的用户角色关联
+		err := s.userRepo.RemoveRoles(ctx, userID, roleIDs)
+		if err != nil {
+			return err
+		}
+
+		// 同步到Casbin
+		sub := fmt.Sprintf("user:%s", userID)
+		for _, role := range roles {
+			_, err = s.enforcer.DeleteRoleForUser(sub, role.Code, domain)
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
 	}
 
 	// 开启事务
@@ -292,8 +316,7 @@ func (s *authService) RemoveRolesFromUser(ctx context.Context, userID string, ro
 		// 同步到Casbin
 		sub := fmt.Sprintf("user:%s", userID)
 		for _, role := range roles {
-			// 为简单起见，这里使用全局域("0")
-			_, err = s.enforcer.DeleteRoleForUser(sub, role.Code, "0")
+			_, err = s.enforcer.DeleteRoleForUser(sub, role.Code, domain)
 			if err != nil {
 				return err
 			}
@@ -344,22 +367,11 @@ func (s *authService) CanUserAccessResource(ctx context.Context, userID string, 
 	return false, nil
 }
 
-// IsUserInRole 检查用户是否具有特定角色
-func (s *authService) IsUserInRole(ctx context.Context, userID string, roleCode string) (bool, error) {
-	// 获取用户角色
-	roles, err := s.userRepo.GetUserRoles(ctx, userID)
-	if err != nil {
-		return false, err
-	}
-
-	// 检查用户是否拥有指定角色
-	for _, role := range roles {
-		if strings.EqualFold(role.Code, roleCode) {
-			return true, nil
-		}
-	}
-
-	return false, nil
+// IsUserInRole 检查用户是否具有特定角色 (在指定域内)
+func (s *authService) IsUserInRole(ctx context.Context, userID string, roleCode string, domain string) (bool, error) {
+	// 使用 Casbin 检查用户在指定域中是否拥有该角色
+	sub := fmt.Sprintf("user:%s", userID)
+	return s.enforcer.HasRoleForUser(sub, roleCode, domain)
 }
 
 // ListRoles 获取角色列表
@@ -479,122 +491,4 @@ func (s *authService) UpdateRoleFromDTO(ctx context.Context, req *dto.RoleUpdate
 	}
 
 	return nil
-}
-
-// CheckUserProjectPermission 检查用户是否拥有项目权限
-func (s *authService) CheckUserProjectPermission(ctx context.Context, userID, projectID string, allowedRoles []string) (bool, error) {
-	// 先检查是否为系统管理员
-	isAdmin, err := s.IsUserInRole(ctx, userID, "ADMIN")
-	if err != nil {
-		return false, err
-	}
-	if isAdmin {
-		return true, nil // 系统管理员拥有所有权限
-	}
-
-	// 查询项目信息以获取所属群组
-	var project entity.Project
-	err = s.db.First(&project, projectID).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return false, errors.New("项目不存在")
-		}
-		return false, err
-	}
-
-	// 查询用户在项目中的角色
-	var permission entity.Permission
-	err = s.db.Where("project_id = ? AND user_id = ?", projectID, userID).First(&permission).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			// 用户在项目中没有显式权限，检查用户在群组中的角色
-			var groupMember entity.GroupMember
-			err = s.db.Where("group_id = ? AND user_id = ?", project.GroupID, userID).First(&groupMember).Error
-			if err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					return false, nil // 用户不是群组成员
-				}
-				return false, err
-			}
-
-			// 如果用户是群组管理员，检查是否在允许的角色中
-			if groupMember.Role == "admin" {
-				for _, role := range allowedRoles {
-					if role == "admin" {
-						return true, nil
-					}
-				}
-			}
-
-			// 如果用户只是普通成员，检查是否在允许的角色中
-			if groupMember.Role == "member" {
-				for _, role := range allowedRoles {
-					if role == "viewer" || role == "member" {
-						return true, nil
-					}
-				}
-			}
-
-			return false, nil
-		}
-		return false, err
-	}
-
-	// 检查用户的项目角色是否在允许的角色列表中
-	for _, role := range allowedRoles {
-		if permission.Role == role {
-			return true, nil
-		}
-	}
-
-	return false, nil
-}
-
-// IsProjectAdmin 检查用户是否为项目管理员
-func (s *authService) IsProjectAdmin(ctx context.Context, userID, projectID string) (bool, error) {
-	// 先检查是否为系统管理员
-	isAdmin, err := s.IsUserInRole(ctx, userID, "ADMIN")
-	if err != nil {
-		return false, err
-	}
-	if isAdmin {
-		return true, nil // 系统管理员拥有所有项目的管理权限
-	}
-
-	// 查询项目信息以获取所属群组和创建者
-	var project entity.Project
-	err = s.db.First(&project, projectID).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return false, errors.New("项目不存在")
-		}
-		return false, err
-	}
-
-	// 检查用户是否是项目创建者
-	if project.CreatorID == userID {
-		return true, nil
-	}
-
-	// 查询用户在项目中的角色
-	var permission entity.Permission
-	err = s.db.Where("project_id = ? AND user_id = ?", projectID, userID).First(&permission).Error
-	if err == nil {
-		// 检查用户是否有admin角色
-		if permission.Role == "admin" {
-			return true, nil
-		}
-	}
-
-	// 查询用户在群组中的角色
-	var groupMember entity.GroupMember
-	err = s.db.Where("group_id = ? AND user_id = ?", project.GroupID, userID).First(&groupMember).Error
-	if err == nil {
-		// 检查用户是否是群组管理员
-		if groupMember.Role == "admin" {
-			return true, nil
-		}
-	}
-
-	return false, nil
 }

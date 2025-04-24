@@ -17,8 +17,8 @@ import (
 	"oss-backend/pkg/minio"
 )
 
-// SetupRouter 设置路由
-func SetupRouter(r *gin.Engine, db interface{}) {
+// SetupRouter 设置路由 (接收 Enforcer)
+func SetupRouter(r *gin.Engine, db interface{}, enforcer *casbin.Enforcer) {
 	// 转换数据库连接
 	gormDB, ok := db.(*gorm.DB)
 	if !ok {
@@ -37,40 +37,28 @@ func SetupRouter(r *gin.Engine, db interface{}) {
 	groupRepo := repository.NewGroupRepository(gormDB)
 	casbinRepo := repository.NewCasbinRepository(gormDB)
 
-	// 初始化Casbin执行器
-	enforcer, err := casbin.NewEnforcer("configs/rbac_model.conf", "configs/policy.csv")
-	if err != nil {
-		panic("初始化Casbin执行器失败: " + err.Error())
-	}
-
-	// 创建统一的认证授权服务
+	// 创建统一的认证授权服务 (需要 Enforcer, 在 main.go 初始化)
 	authSvc := service.NewAuthService(enforcer, roleRepo, userRepo, casbinRepo, gormDB)
 
-	// 初始化RBAC权限
-	err = authSvc.InitializeRBAC()
-	if err != nil {
-		panic("初始化RBAC权限失败: " + err.Error())
-	}
-
-	// 创建认证与授权中间件
+	// 创建认证与授权中间件 (传入 Enforcer)
 	authMiddleware := middleware.NewAuthMiddleware(authSvc, userRepo, enforcer)
 
 	// 设置 API 前缀
 	apiGroup := r.Group("/api/oss")
 
-	// 注册角色相关路由
+	// 注册角色相关路由 (AuthService 已包含 Enforcer)
 	registerRoleRoutes(apiGroup, jwtMiddleware, authMiddleware, authSvc)
 
-	// 注册用户相关路由
+	// 注册用户相关路由 (AuthService 已包含 Enforcer)
 	registerUserRoutes(apiGroup, gormDB, jwtMiddleware, authMiddleware, authSvc)
 
-	// 注册群组相关路由
+	// 注册群组相关路由 (AuthMiddleware 需要 Enforcer)
 	registerGroupRoutes(apiGroup, userRepo, roleRepo, groupRepo, jwtMiddleware, authMiddleware)
 
-	// 注册项目相关路由
+	// 注册项目相关路由 (AuthService 和 AuthMiddleware 需要 Enforcer)
 	registerProjectRoutes(apiGroup, gormDB, jwtMiddleware, authSvc, authMiddleware)
 
-	// 注册文件相关路由
+	// 注册文件相关路由 (AuthService 和 AuthMiddleware 需要 Enforcer)
 	registerFileRoutes(apiGroup, gormDB, jwtMiddleware, authMiddleware, authSvc)
 }
 

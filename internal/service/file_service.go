@@ -42,6 +42,9 @@ type FileService interface {
 
 	// 公共下载
 	GetPublicDownloadURL(ctx context.Context, fileID string) (string, error)
+
+	// 文件权限
+	CheckFilePermission(ctx context.Context, fileID, userID string, requiredAction string) (bool, error)
 }
 
 // fileService 文件服务实现
@@ -610,7 +613,7 @@ func (s *fileService) GetPublicDownloadURL(ctx context.Context, fileID string) (
 	return s.minioClient.GetPublicDownloadURL(ctx, project.Group.GroupKey, objectName)
 }
 
-func (s *fileService) CheckFilePermission(ctx context.Context, fileID, userID string, requiredRoles []string) (bool, error) {
+func (s *fileService) CheckFilePermission(ctx context.Context, fileID, userID string, requiredAction string) (bool, error) {
 	// 1. 获取文件信息
 	file, err := s.fileRepo.GetByID(ctx, fileID)
 	if err != nil {
@@ -629,6 +632,7 @@ func (s *fileService) CheckFilePermission(ctx context.Context, fileID, userID st
 		return false, errors.New("项目不存在")
 	}
 
-	// 3. 检查用户是否拥有所需角色
-	return s.authService.CheckUserProjectPermission(ctx, userID, file.ProjectID, requiredRoles)
+	// 3. 检查用户是否拥有执行所需操作的权限
+	projectDomain := fmt.Sprintf("project:%s", file.ProjectID)
+	return s.authService.CanUserAccessResource(ctx, userID, "files", requiredAction, projectDomain)
 }

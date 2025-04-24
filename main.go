@@ -6,6 +6,8 @@ import (
 	"log"
 	"strings"
 
+	"github.com/casbin/casbin/v2"
+	gormadapter "github.com/casbin/gorm-adapter/v3"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
 	"gorm.io/driver/mysql"
@@ -45,16 +47,22 @@ func main() {
 		log.Fatalf("初始化数据库失败: %v", err)
 	}
 
-	// 初始化角色和管理员用户
-	if err := initRolesAndAdmin(db); err != nil {
+	// 初始化 Casbin Enforcer
+	enforcer, err := initCasbin(db)
+	if err != nil {
+		log.Fatalf("初始化 Casbin 失败: %v", err)
+	}
+
+	// 初始化角色和管理员用户 (传入 Enforcer)
+	if err := initRolesAndAdmin(db, enforcer); err != nil {
 		log.Printf("初始化角色和管理员用户失败: %v", err)
 	}
 
 	// 初始化应用
 	r := gin.Default()
 
-	// 设置路由
-	routes.SetupRouter(r, db)
+	// 设置路由 (需要将 Enforcer 传递下去，或者通过依赖注入)
+	routes.SetupRouter(r, db, enforcer)
 
 	// 读取服务器端口配置
 	port := viper.GetInt("server.port")
@@ -83,7 +91,7 @@ func initDB() (*gorm.DB, error) {
 	dsn := viper.GetString("database.dsn")
 	if dsn == "" {
 		// 使用默认值
-		dsn = "root:password@tcp(127.0.0.1:3306)/oss_backend?charset=utf8mb4&parseTime=True&loc=Local"
+		dsn = "root:password@tcp(127.0.0.1:3306)/oss?charset=utf8mb4&parseTime=True&loc=Local"
 	}
 
 	// 先连接到MySQL服务器，不指定数据库
@@ -138,8 +146,34 @@ func initDB() (*gorm.DB, error) {
 	return db, nil
 }
 
-// 初始化角色和管理员用户
-func initRolesAndAdmin(db *gorm.DB) error {
+// 初始化 Casbin Enforcer
+func initCasbin(db *gorm.DB) (*casbin.Enforcer, error) {
+	// 1. 创建 Gorm Adapter
+	// Gorm Adapter 默认使用的表名是 'casbin_rule'，如果表名不同需要配置
+	adapter, err := gormadapter.NewAdapterByDB(db)
+	if err != nil {
+		return nil, fmt.Errorf("创建 casbin adapter 失败: %w", err)
+	}
+
+	// 2. 创建 Enforcer
+	// 确认模型文件路径正确
+	enforcer, err := casbin.NewEnforcer("configs/rbac_model.conf", adapter)
+	if err != nil {
+		return nil, fmt.Errorf("创建 casbin enforcer 失败: %w", err)
+	}
+
+	// 3. 加载策略 (Adapter 通常会自动加载，但显式调用更保险)
+	err = enforcer.LoadPolicy()
+	if err != nil {
+		return nil, fmt.Errorf("加载 casbin policy 失败: %w", err)
+	}
+
+	log.Println("Casbin Enforcer 初始化成功")
+	return enforcer, nil
+}
+
+// 初始化角色和管理员用户 (接收 Enforcer)
+func initRolesAndAdmin(db *gorm.DB, enforcer *casbin.Enforcer) error {
 	ctx := context.Background()
 
 	// 初始化仓库
@@ -149,9 +183,9 @@ func initRolesAndAdmin(db *gorm.DB) error {
 	// 初始化基础系统角色
 	initSystemRoles(ctx, roleRepo)
 
-	// 初始化服务
+	// 初始化服务 (传入 Enforcer)
 	casbinRepo := repository.NewCasbinRepository(db)
-	authService := service.NewAuthService(nil, roleRepo, userRepo, casbinRepo, db)
+	authService := service.NewAuthService(enforcer, roleRepo, userRepo, casbinRepo, db)
 	userService := service.NewUserService(userRepo, roleRepo, authService)
 
 	// 初始化系统管理员用户

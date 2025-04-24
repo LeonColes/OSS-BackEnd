@@ -87,14 +87,16 @@ func (s *projectService) CreateProject(ctx context.Context, req *dto.CreateProje
 	}
 
 	// 检查用户是否有权限在该分组下创建项目
-	isGroupAdmin, err := s.authService.IsUserInRole(ctx, creatorID, "group_admin")
+	groupDomain := fmt.Sprintf("group:%s", group.ID)
+	isGroupAdmin, err := s.authService.IsUserInRole(ctx, creatorID, entity.RoleGroupAdmin, groupDomain)
 	if err != nil {
 		return nil, err
 	}
 
 	// 如果不是分组管理员或超级管理员，检查是否是分组成员
 	if !isGroupAdmin {
-		isSuperAdmin, err := s.authService.IsUserInRole(ctx, creatorID, "super_admin")
+		systemDomain := "system"
+		isSuperAdmin, err := s.authService.IsUserInRole(ctx, creatorID, entity.RoleAdmin, systemDomain)
 		if err != nil {
 			return nil, err
 		}
@@ -688,7 +690,8 @@ func (s *projectService) ListProjectUsers(ctx context.Context, projectID string,
 // CheckUserProjectAccess 检查用户项目访问权限
 func (s *projectService) CheckUserProjectAccess(ctx context.Context, userID, projectID string, requiredRoles []string) (bool, error) {
 	// 先检查是否是超级管理员
-	isSuperAdmin, err := s.authService.IsUserInRole(ctx, userID, "super_admin")
+	systemDomain := "system"
+	isSuperAdmin, err := s.authService.IsUserInRole(ctx, userID, entity.RoleAdmin, systemDomain)
 	if err != nil {
 		return false, err
 	}

@@ -6,20 +6,20 @@ server:
 # 数据库配置
 database:
   driver: mysql
-  dsn: root:password@tcp(localhost:3306)/oss_backend?charset=utf8mb4&parseTime=True&allowNativePasswords=true
+  dsn: root:password@tcp(47.96.113.223:3306)/oss?charset=utf8mb4&parseTime=True&allowNativePasswords=true
   max_idle_conns: 10
   max_open_conns: 100
   conn_max_lifetime: 3600
 
 # Redis配置
 redis:
-  addr: localhost:6379
+  addr: 47.96.113.223:6379
   password: ""
   db: 0
 
 # MinIO配置
 minio:
-  endpoint: localhost:9000
+  endpoint: 47.96.113.223:9000
   access_key: minioadmin
   secret_key: minioadmin
   use_ssl: false
@@ -27,7 +27,7 @@ minio:
 
 # JWT配置
 jwt:
-  secret: "your-secret-key-change-in-production"
+  secret: "LeonColeSuperSecretkey20250424"
   expire_hours: 24 # 访问令牌过期时间（小时）
   refresh_expire_hours: 168 # 刷新令牌过期时间（7天）
 

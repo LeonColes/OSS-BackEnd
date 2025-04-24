@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -70,7 +71,8 @@ func (c *FileController) Upload(ctx *gin.Context) {
 	}
 
 	// 检查项目权限 (需要写入权限)
-	canWrite, err := c.authService.CheckUserProjectPermission(ctx, userID, req.ProjectID, []string{"admin", "editor"})
+	projectDomain := fmt.Sprintf("project:%s", req.ProjectID)
+	canWrite, err := c.authService.CanUserAccessResource(ctx, userID, "files", service.ActionCreate, projectDomain)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, common.ErrorResponse("检查权限失败: "+err.Error()))
 		return
@@ -132,7 +134,8 @@ func (c *FileController) Download(ctx *gin.Context) {
 	}
 
 	// 检查项目权限 (需要读取权限)
-	canRead, err := c.authService.CheckUserProjectPermission(ctx, userID, fileInfo.ProjectID, []string{"admin", "editor", "viewer"})
+	projectDomain := fmt.Sprintf("project:%s", fileInfo.ProjectID)
+	canRead, err := c.authService.CanUserAccessResource(ctx, userID, "files", service.ActionRead, projectDomain)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, common.ErrorResponse("检查权限失败: "+err.Error()))
 		return
@@ -196,7 +199,8 @@ func (c *FileController) ListFiles(ctx *gin.Context) {
 	}
 
 	// 检查项目权限 (需要读取权限)
-	canRead, err := c.authService.CheckUserProjectPermission(ctx, userID, req.ProjectID, []string{"admin", "editor", "viewer"})
+	projectDomain := fmt.Sprintf("project:%s", req.ProjectID)
+	canRead, err := c.authService.CanUserAccessResource(ctx, userID, "files", service.ActionRead, projectDomain)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, common.ErrorResponse("检查权限失败: "+err.Error()))
 		return
@@ -257,13 +261,14 @@ func (c *FileController) CreateFolder(ctx *gin.Context) {
 	}
 
 	// 检查项目权限 (需要写入权限)
-	canWrite, err := c.authService.CheckUserProjectPermission(ctx, userID, req.ProjectID, []string{"admin", "editor"})
+	projectDomain := fmt.Sprintf("project:%s", req.ProjectID)
+	canWrite, err := c.authService.CanUserAccessResource(ctx, userID, "files", service.ActionCreate, projectDomain)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, common.ErrorResponse("检查权限失败: "+err.Error()))
 		return
 	}
 	if !canWrite {
-		ctx.JSON(http.StatusForbidden, common.ErrorResponse("没有项目写入权限"))
+		ctx.JSON(http.StatusForbidden, common.ErrorResponse("没有创建文件夹的权限"))
 		return
 	}
 
@@ -319,22 +324,16 @@ func (c *FileController) DeleteFile(ctx *gin.Context) {
 		return
 	}
 
-	// 检查项目权限 (需要写入权限)
-	canWrite, err := c.authService.CheckUserProjectPermission(ctx, userID, fileInfo.ProjectID, []string{"admin", "editor"})
+	// 检查项目权限 (需要删除权限)
+	projectDomain := fmt.Sprintf("project:%s", fileInfo.ProjectID)
+	canWrite, err := c.authService.CanUserAccessResource(ctx, userID, "files", service.ActionDelete, projectDomain)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, common.ErrorResponse("检查权限失败: "+err.Error()))
 		return
 	}
 
-	// 检查权限：管理员可以删除任何文件，编辑者只能删除自己的文件
-	isAdmin, err := c.authService.IsProjectAdmin(ctx, userID, fileInfo.ProjectID)
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, common.ErrorResponse("检查管理员权限失败: "+err.Error()))
-		return
-	}
-
-	if !canWrite || (fileInfo.UploaderID != userID && !isAdmin) {
-		ctx.JSON(http.StatusForbidden, common.ErrorResponse("没有删除此文件的权限"))
+	if !canWrite {
+		ctx.JSON(http.StatusForbidden, common.ErrorResponse("没有删除文件的权限"))
 		return
 	}
 
@@ -387,13 +386,14 @@ func (c *FileController) GetFileVersions(ctx *gin.Context) {
 	}
 
 	// 检查项目权限 (需要读取权限)
-	canRead, err := c.authService.CheckUserProjectPermission(ctx, userID, fileInfo.ProjectID, []string{"admin", "editor", "viewer"})
+	projectDomain := fmt.Sprintf("project:%s", fileInfo.ProjectID)
+	canRead, err := c.authService.CanUserAccessResource(ctx, userID, "files", service.ActionRead, projectDomain)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, common.ErrorResponse("检查权限失败: "+err.Error()))
 		return
 	}
 	if !canRead {
-		ctx.JSON(http.StatusForbidden, common.ErrorResponse("没有查看此文件的权限"))
+		ctx.JSON(http.StatusForbidden, common.ErrorResponse("没有查看文件版本的权限"))
 		return
 	}
 
@@ -471,14 +471,15 @@ func (c *FileController) CreateShare(ctx *gin.Context) {
 		return
 	}
 
-	// 检查项目权限 (需要读取权限)
-	canRead, err := c.authService.CheckUserProjectPermission(ctx, userID, fileInfo.ProjectID, []string{"admin", "editor", "viewer"})
+	// 检查项目权限 (需要读取权限，因为分享的是文件内容)
+	projectDomain := fmt.Sprintf("project:%s", fileInfo.ProjectID)
+	canRead, err := c.authService.CanUserAccessResource(ctx, userID, "files", service.ActionRead, projectDomain)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, common.ErrorResponse("检查权限失败: "+err.Error()))
 		return
 	}
 	if !canRead {
-		ctx.JSON(http.StatusForbidden, common.ErrorResponse("没有分享此文件的权限"))
+		ctx.JSON(http.StatusForbidden, common.ErrorResponse("没有分享该文件的权限"))
 		return
 	}
 

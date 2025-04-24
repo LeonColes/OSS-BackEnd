@@ -67,35 +67,25 @@ func (m *AuthMiddleware) AuthCheck(level string, resourceType string) gin.Handle
 
 // 系统级权限检查
 func (m *AuthMiddleware) checkSystemPermission(c *gin.Context, userIDValue interface{}) {
-	// 获取用户所有角色
-	userRoles, exists := c.Get("userRoles")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, common.ErrorResponse("用户角色信息不存在"))
+	// 获取用户ID
+	userID := userIDValue.(string)
+
+	// 获取请求对象和操作
+	obj := c.Request.URL.Path                        // 或者更精确的资源标识
+	act := utils.MapMethodToAction(c.Request.Method) // 使用映射函数
+
+	// 系统级域为 "system"
+	const domain = "system"
+
+	// 直接调用 CanUserAccessResource
+	allowed, err := m.authService.CanUserAccessResource(c, userID, obj, act, domain)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, common.ErrorResponse("检查权限失败: "+err.Error()))
 		c.Abort()
 		return
 	}
 
-	// 构造请求对象
-	obj := c.Request.URL.Path
-	act := c.Request.Method
-
-	// 系统级域为 "system"
-	domain := "system"
-
-	// 检查每个角色的权限
-	roles := userRoles.([]string)
-	allowed := false
-
-	for _, role := range roles {
-		// 检查权限
-		result, err := m.authService.CheckPermission(role, domain, obj, act)
-		if err == nil && result {
-			allowed = true
-			break
-		}
-	}
-
-	// 如果所有角色都没有权限，则拒绝访问
+	// 如果没有权限，则拒绝访问
 	if !allowed {
 		c.JSON(http.StatusForbidden, common.ErrorResponse("权限不足"))
 		c.Abort()
@@ -152,36 +142,22 @@ func (m *AuthMiddleware) checkGroupPermission(c *gin.Context, userIDValue interf
 	// 从HTTP方法映射到操作
 	act := utils.MapMethodToAction(c.Request.Method)
 
-	// 构造用户标识
-	sub := fmt.Sprintf("user:%s", userID)
-
-	// 检查用户直接权限
-	allowed, err := m.authService.CheckPermission(sub, domain, resource, act)
-	if err == nil && allowed {
-		c.Next()
-		return
-	}
-
-	// 获取用户在此域的角色
-	roles, err := m.authService.GetRolesForUser(sub, domain)
+	// 直接调用 CanUserAccessResource
+	allowed, err := m.authService.CanUserAccessResource(c, userID, resource, act, domain)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, common.ErrorResponse("获取用户角色失败"))
+		c.JSON(http.StatusInternalServerError, common.ErrorResponse("检查权限失败: "+err.Error()))
 		c.Abort()
 		return
 	}
 
-	// 检查角色权限
-	for _, role := range roles {
-		allowed, err := m.authService.CheckPermission(role, domain, resource, act)
-		if err == nil && allowed {
-			c.Next()
-			return
-		}
+	// 如果没有权限，则拒绝访问
+	if !allowed {
+		c.JSON(http.StatusForbidden, common.ErrorResponse("您没有权限操作此群组资源"))
+		c.Abort()
+		return
 	}
 
-	// 如果都没有权限，则拒绝访问
-	c.JSON(http.StatusForbidden, common.ErrorResponse("您没有权限操作此群组资源"))
-	c.Abort()
+	c.Next()
 }
 
 // 项目级权限检查
@@ -231,39 +207,26 @@ func (m *AuthMiddleware) checkProjectPermission(c *gin.Context, userIDValue inte
 	// 从HTTP方法映射到操作
 	act := utils.MapMethodToAction(c.Request.Method)
 
-	// 构造用户标识
-	sub := fmt.Sprintf("user:%s", userID)
-
-	// 检查用户直接权限
-	allowed, err := m.authService.CheckPermission(sub, domain, resource, act)
-	if err == nil && allowed {
-		c.Next()
-		return
-	}
-
-	// 获取用户在此域的角色
-	roles, err := m.authService.GetRolesForUser(sub, domain)
+	// 直接调用 CanUserAccessResource
+	allowed, err := m.authService.CanUserAccessResource(c, userID, resource, act, domain)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, common.ErrorResponse("获取用户角色失败"))
+		c.JSON(http.StatusInternalServerError, common.ErrorResponse("检查权限失败: "+err.Error()))
 		c.Abort()
 		return
 	}
 
-	// 检查角色权限
-	for _, role := range roles {
-		allowed, err := m.authService.CheckPermission(role, domain, resource, act)
-		if err == nil && allowed {
-			c.Next()
-			return
-		}
+	// 如果没有权限，则拒绝访问
+	if !allowed {
+		c.JSON(http.StatusForbidden, common.ErrorResponse("您没有权限操作此项目资源"))
+		c.Abort()
+		return
 	}
 
-	// 如果都没有权限，则拒绝访问
-	c.JSON(http.StatusForbidden, common.ErrorResponse("您没有权限操作此项目资源"))
-	c.Abort()
+	c.Next()
 }
 
-// RequireRole 检查用户是否拥有特定角色
+// RequireRole 检查用户是否拥有特定角色 (假定在 "system" 域)
+// 注意: 如果需要检查特定域的角色，需要修改此中间件以获取 domain
 func (m *AuthMiddleware) RequireRole(roleName string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 从上下文中获取用户ID
@@ -273,25 +236,19 @@ func (m *AuthMiddleware) RequireRole(roleName string) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-
 		userID := userIDValue.(string)
+		const domain = "system" // 假定检查系统域角色，如果需要检查其他域，需要动态获取
 
-		// 获取用户角色
-		roles, err := m.userRepo.GetUserRoles(c, userID)
+		// 使用 AuthService 检查角色
+		hasRole, err := m.authService.IsUserInRole(c, userID, roleName, domain)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, common.ErrorResponse("获取用户角色失败"))
+			c.JSON(http.StatusInternalServerError, common.ErrorResponse("检查角色失败: "+err.Error()))
 			c.Abort()
 			return
 		}
 
 		// 检查用户是否拥有指定角色
-		hasRole := false
-		for _, role := range roles {
-			if role.Code == roleName {
-				hasRole = true
-				break
-			}
-		}
+		// Remove old loop based on userRepo.GetUserRoles
 
 		if !hasRole {
 			c.JSON(http.StatusForbidden, common.ErrorResponse("权限不足:需要 "+roleName+" 角色"))
@@ -303,7 +260,8 @@ func (m *AuthMiddleware) RequireRole(roleName string) gin.HandlerFunc {
 	}
 }
 
-// RequireAnyRole 要求用户具有任意指定角色之一
+// RequireAnyRole 要求用户具有任意指定角色之一 (假定在 "system" 域)
+// 注意: 如果需要检查特定域的角色，需要修改此中间件以获取 domain
 func (m *AuthMiddleware) RequireAnyRole(roleNames ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 从上下文中获取用户ID
@@ -313,33 +271,32 @@ func (m *AuthMiddleware) RequireAnyRole(roleNames ...string) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-
 		userID := userIDValue.(string)
-
-		// 获取用户角色
-		roles, err := m.userRepo.GetUserRoles(c, userID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, common.ErrorResponse("获取用户角色失败"))
-			c.Abort()
-			return
-		}
+		const domain = "system" // 假定检查系统域角色，如果需要检查其他域，需要动态获取
 
 		// 检查用户是否拥有任意指定角色
 		hasRole := false
-		for _, role := range roles {
-			for _, roleName := range roleNames {
-				if role.Code == roleName {
-					hasRole = true
-					break
-				}
+		for _, roleName := range roleNames {
+			allowed, err := m.authService.IsUserInRole(c, userID, roleName, domain)
+			if err != nil {
+				// Consider logging the error but continuing the loop
+				// For now, fail fast
+				c.JSON(http.StatusInternalServerError, common.ErrorResponse("检查角色失败: "+err.Error()))
+				c.Abort()
+				return
 			}
-			if hasRole {
+			if allowed {
+				hasRole = true
 				break
 			}
 		}
 
+		// Remove old loop based on userRepo.GetUserRoles
+
 		if !hasRole {
-			c.JSON(http.StatusForbidden, common.ErrorResponse("权限不足:需要管理员权限"))
+			// Improved error message clarity
+			requiredRolesStr := strings.Join(roleNames, " 或 ")
+			c.JSON(http.StatusForbidden, common.ErrorResponse("权限不足: 需要 "+requiredRolesStr+" 角色中的至少一个"))
 			c.Abort()
 			return
 		}
@@ -348,72 +305,85 @@ func (m *AuthMiddleware) RequireAnyRole(roleNames ...string) gin.HandlerFunc {
 	}
 }
 
-// InitializeRBAC 初始化RBAC策略
-func (m *AuthMiddleware) InitializeRBAC() error {
-	// 添加默认角色的权限策略
-	policies := [][]string{
-		// 群组管理员权限
-		{"GROUP_ADMIN", "*", "projects", "create"},
-		{"GROUP_ADMIN", "*", "projects", "read"},
-		{"GROUP_ADMIN", "*", "projects", "update"},
-		{"GROUP_ADMIN", "*", "projects", "delete"},
-		{"GROUP_ADMIN", "*", "groups", "read"},
-		{"GROUP_ADMIN", "*", "groups", "update"},
-		{"GROUP_ADMIN", "*", "users", "read"},
-		{"GROUP_ADMIN", "*", "roles", "assign"},
-		{"GROUP_ADMIN", "*", "members", "add"},
-		{"GROUP_ADMIN", "*", "members", "remove"},
-		{"GROUP_ADMIN", "*", "files", "create"},
-		{"GROUP_ADMIN", "*", "files", "read"},
-		{"GROUP_ADMIN", "*", "files", "update"},
-		{"GROUP_ADMIN", "*", "files", "delete"},
-
-		// 普通成员权限
-		{"MEMBER", "*", "projects", "read"},
-		{"MEMBER", "*", "files", "create"},
-		{"MEMBER", "*", "files", "read"},
-		{"MEMBER", "*", "files", "update"},
-		{"MEMBER", "*", "files", "delete"},
-	}
-
-	// 清除现有策略
-	_, err := m.enforcer.RemoveFilteredPolicy(0, "GROUP_ADMIN", "MEMBER")
-	if err != nil {
-		return err
-	}
-
-	// 添加新策略
-	_, err = m.enforcer.AddPolicies(policies)
-	return err
-}
-
-// RequireAdmin 检查用户是否是管理员
+// RequireAdmin 检查用户是否是系统管理员 ("system" 域的 "ADMIN" 角色)
 func (m *AuthMiddleware) RequireAdmin() gin.HandlerFunc {
-	return m.RequireRole("GROUP_ADMIN")
+	// Use the updated RequireRole which now checks 'system' domain by default
+	return m.RequireRole("ADMIN")
 }
 
-// RequireProjectAdmin 检查用户是否是项目管理员（现在使用群组管理员代替）
+// RequireProjectAdmin 检查用户是否是项目管理员
+// 这需要从请求中获取 projectID 并检查特定角色 (例如 "PROJECT_ADMIN" 或 "admin") 在项目域 ("project:projectID")
 func (m *AuthMiddleware) RequireProjectAdmin() gin.HandlerFunc {
-	return m.RequireRole("GROUP_ADMIN")
+	return func(c *gin.Context) {
+		// 从上下文中获取用户ID
+		userIDValue, exists := c.Get("userID")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, common.ErrorResponse("请先登录"))
+			c.Abort()
+			return
+		}
+		userID := userIDValue.(string)
+
+		// 从路径参数获取项目ID (需要根据实际路由调整参数名)
+		projectID := c.Param("projectID") // 或者 c.Param("id") 等
+		if projectID == "" {
+			// 如果项目ID在其他地方 (e.g., query param, request body), 需要相应修改
+			c.JSON(http.StatusBadRequest, common.ErrorResponse("请求路径缺少项目ID"))
+			c.Abort()
+			return
+		}
+
+		// 构造项目域
+		projectDomain := fmt.Sprintf("project:%s", projectID)
+		// 定义项目管理员角色代码 (需要与 Casbin 策略一致)
+		const projectAdminRole = "PROJECT_ADMIN" // 或者使用 "admin" 如果策略是这样定义的
+
+		// 检查用户是否在项目域拥有管理员角色
+		hasRole, err := m.authService.IsUserInRole(c, userID, projectAdminRole, projectDomain)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, common.ErrorResponse("检查项目管理员权限失败: "+err.Error()))
+			c.Abort()
+			return
+		}
+
+		if !hasRole {
+			c.JSON(http.StatusForbidden, common.ErrorResponse("权限不足: 需要项目管理员角色"))
+			c.Abort()
+			return
+		}
+
+		c.Next()
+	}
 }
 
 // GetGroupIDFromParam 从URL参数中获取群组ID
 func GetGroupIDFromParam(c *gin.Context) (string, error) {
 	groupID := c.Param("groupID")
 	if groupID == "" {
-		return "0", nil
+		return "", nil
 	}
-	return groupID, nil
+	return fmt.Sprintf("group:%s", groupID), nil
 }
 
-// GetGroupIDFromProjectParam 从项目参数中获取关联的群组ID
-func GetGroupIDFromProjectParam(c *gin.Context) (string, error) {
-	// 从路径参数中获取项目ID
+// GetDomainIDFromProjectParam 从项目参数中获取项目域ID
+// 重命名并修复逻辑
+func GetDomainIDFromProjectParam(c *gin.Context) (string, error) {
+	// 尝试从路径参数获取项目ID (根据路由调整 "projectID" 或 "id")
 	projectID := c.Param("projectID")
 	if projectID == "" {
-		return "0", nil
+		projectID = c.Param("id")
 	}
-	return "0", nil
+	// 如果路径没有，尝试从查询参数获取
+	if projectID == "" {
+		projectID = c.Query("project_id")
+	}
+
+	if projectID == "" {
+		// 如果没有项目ID，返回空字符串表示无特定项目域
+		return "", nil
+	}
+	// 返回构造好的项目域
+	return fmt.Sprintf("project:%s", projectID), nil
 }
 
 // Authorize 基于资源和操作的授权中间件
@@ -439,41 +409,29 @@ func (m *AuthMiddleware) Authorize(obj string, act string, getDomainIDFunc func(
 			return
 		}
 
-		// 如果域ID为空或"0"，表示全局资源，无需检查特定权限
-		if domainID == "" || domainID == "0" {
+		// 如果域ID为空，表示全局资源或无法确定域，可能跳过检查或执行默认检查
+		if domainID == "" {
+			// 根据业务逻辑决定：是允许访问，还是拒绝，或是检查系统级权限？
+			// 暂定为跳过检查 (允许访问)
 			c.Next()
 			return
 		}
 
-		// 构造用户标识
-		sub := fmt.Sprintf("user:%s", userID)
-
-		// 检查用户直接权限
-		allowed, err := m.authService.CheckPermission(sub, domainID, obj, act)
-		if err == nil && allowed {
-			c.Next()
-			return
-		}
-
-		// 获取用户在此域的角色
-		roles, err := m.authService.GetRolesForUser(sub, domainID)
+		// 直接调用 CanUserAccessResource
+		allowed, err := m.authService.CanUserAccessResource(c, userID, obj, act, domainID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, common.ErrorResponse("获取用户角色失败"))
+			c.JSON(http.StatusInternalServerError, common.ErrorResponse("检查权限失败: "+err.Error()))
 			c.Abort()
 			return
 		}
 
-		// 检查角色权限
-		for _, role := range roles {
-			allowed, err := m.authService.CheckPermission(role, domainID, obj, act)
-			if err == nil && allowed {
-				c.Next()
-				return
-			}
+		// 如果没有权限，则拒绝访问
+		if !allowed {
+			c.JSON(http.StatusForbidden, common.ErrorResponse(fmt.Sprintf("您没有权限执行此操作: %s %s on domain %s", act, obj, domainID)))
+			c.Abort()
+			return
 		}
 
-		// 如果都没有权限，则拒绝访问
-		c.JSON(http.StatusForbidden, common.ErrorResponse(fmt.Sprintf("您没有权限执行此操作: %s %s", act, obj)))
-		c.Abort()
+		c.Next()
 	}
 }
