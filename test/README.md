@@ -1,15 +1,16 @@
-# OSS系统自动化测试工具
+# OSS-Backend 自动化测试工具
 
-这是一个基于配置驱动的API自动化测试工具，用于测试OSS后端系统的API功能。
+这是一个基于Swagger文档自动生成动态测试用例的工具，能够实现API的自动化测试，支持随机数据生成。
 
 ## 功能特点
 
-- 环境检测功能，确保测试环境正常
-- 基于JSON配置的测试用例，易于扩展
+- 基于Swagger文档自动生成测试用例
+- 支持API接口的自动测试
+- 自动生成随机测试数据
 - 支持测试用例之间的依赖关系
-- 支持变量传递和引用
+- 支持变量存储和传递
 - 支持文件上传测试
-- 详细的测试报告输出
+- 生成详细的测试报告
 
 ## 快速开始
 
@@ -20,88 +21,105 @@ cd test
 go build -o oss_tester
 ```
 
+### 生成测试配置
+
+```bash
+# 从Swagger文档生成测试配置
+./oss_tester -swagger ../docs/swagger/swagger.json -output test_config.json
+```
+
 ### 运行测试
 
-运行所有测试用例:
-
 ```bash
-./oss_tester
+# 运行所有测试用例
+./oss_tester -run
 ```
 
-运行特定测试用例:
+### 其他命令选项
 
 ```bash
-./oss_tester -test login_user
+# 显示帮助信息
+./oss_tester -help
+
+# 指定API基础URL
+./oss_tester -base http://localhost:8080
+
+# 生成配置并直接运行
+./oss_tester -swagger ../docs/swagger/swagger.json -output test_config.json -run
 ```
 
-跳过环境检测:
+## 测试配置文件结构
 
-```bash
-./oss_tester -skip-env
-```
-
-使用自定义配置文件:
-
-```bash
-./oss_tester -config my_config.json
-```
-
-## 配置文件说明
-
-配置文件使用JSON格式，包含以下结构:
+测试配置文件是一个JSON文件，包含以下主要部分：
 
 ```json
 {
-  "base_url": "http://localhost:8080/api/oss",  // API基础URL
+  "base_url": "http://localhost:8080",
   "test_cases": [
     {
-      "name": "test_name",                 // 测试用例名称
-      "description": "测试描述",           // 测试用例描述
-      "skip": false,                       // 是否跳过此测试
-      "depends_on": ["other_test"],        // 依赖的其他测试用例
+      "name": "测试用例名称",
+      "description": "测试用例描述",
+      "skip": false,
+      "depends_on": ["依赖的测试用例"],
       "api": {
-        "endpoint": "/path/to/api",        // API路径
-        "method": "GET",                   // HTTP方法
-        "auth": true                       // 是否需要认证
+        "endpoint": "/api/endpoint",
+        "method": "POST",
+        "auth": true
       },
-      "request": {                         // 请求参数
-        "key": "value",
-        "ref_key": "${variable_name}"      // 引用之前存储的变量
+      "request": {
+        "param1": "value1",
+        "param2": "value2"
       },
-      "file_upload": {                     // 文件上传配置（可选）
+      "file_upload": {
         "field_name": "file",
         "file_name": "test.txt",
-        "file_path": "./test.txt"
+        "file_path": "test_file.txt"
       },
-      "expect": {                          // 断言配置
-        "status_code": 200,                // 期望的状态码
-        "contains": ["success"],           // 期望响应包含的字符串
-        "not_contains": ["error"],         // 期望响应不包含的字符串
-        "json": {                          // 期望的JSON响应
-          "code": 0,
-          "data.name": "value"             // 支持点标记法访问嵌套字段
+      "expect": {
+        "status_code": 200,
+        "contains": ["期望包含的字符串"],
+        "not_contains": ["期望不包含的字符串"],
+        "json": {
+          "code": 200,
+          "data.field": "期望值"
         }
       },
-      "store": {                           // 存储响应中的值（可选）
-        "var_name": "data.field"           // 存储response.data.field到var_name变量
+      "store": {
+        "变量名": "data.field"
       }
     }
   ]
 }
 ```
 
-## 当前支持的测试场景
+## 变量引用
 
-1. 用户注册与登录
-2. 获取用户信息
-3. 群组创建与管理
-4. 项目创建与管理
-5. 文件上传、下载与管理
-6. 文件分享功能
+在测试用例中，可以使用`${变量名}`的形式引用之前测试中存储的变量：
 
-## 故障排除
+```json
+{
+  "request": {
+    "user_id": "${USER_ID}"
+  }
+}
+```
 
-- 确保OSS后端服务正在运行
-- 检查配置文件中的`base_url`是否正确
-- 环境检测失败时，检查服务健康状态
-- 对于文件上传测试，确保测试文件存在 
+## 支持的测试场景
+
+目前支持的测试场景包括：
+
+1. 用户注册和登录
+2. 用户信息获取和修改
+3. 群组管理
+4. 项目管理
+5. 文件管理
+6. 权限管理
+
+## 疑难解答
+
+如遇到问题，请检查：
+
+1. 后端服务是否正常运行
+2. Swagger文档是否完整有效
+3. 测试配置文件格式是否正确
+4. 网络连接是否畅通 

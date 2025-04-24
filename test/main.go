@@ -1,39 +1,90 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"log"
 	"math/rand"
-	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 )
 
-// 测试配置结构
+// Swagger文档结构
+type SwaggerDoc struct {
+	Swagger     string                       `json:"swagger"`
+	Info        map[string]interface{}       `json:"info"`
+	Host        string                       `json:"host"`
+	BasePath    string                       `json:"basePath"`
+	Paths       map[string]map[string]Path   `json:"paths"`
+	Definitions map[string]SwaggerDefinition `json:"definitions"`
+}
+
+type Path struct {
+	Tags        []string                   `json:"tags"`
+	Summary     string                     `json:"summary"`
+	Description string                     `json:"description"`
+	OperationID string                     `json:"operationId"`
+	Consumes    []string                   `json:"consumes"`
+	Produces    []string                   `json:"produces"`
+	Parameters  []Parameter                `json:"parameters"`
+	Responses   map[string]SwaggerResponse `json:"responses"`
+	Security    []map[string][]string      `json:"security"`
+}
+
+type Parameter struct {
+	Name        string    `json:"name"`
+	In          string    `json:"in"`
+	Description string    `json:"description"`
+	Required    bool      `json:"required"`
+	Type        string    `json:"type"`
+	Schema      SchemaRef `json:"schema"`
+}
+
+type SchemaRef struct {
+	Ref string `json:"$ref"`
+}
+
+type SwaggerResponse struct {
+	Description string    `json:"description"`
+	Schema      SchemaRef `json:"schema"`
+}
+
+type SwaggerDefinition struct {
+	Type       string                        `json:"type"`
+	Properties map[string]PropertyDefinition `json:"properties"`
+	Required   []string                      `json:"required"`
+}
+
+type PropertyDefinition struct {
+	Type        string     `json:"type"`
+	Format      string     `json:"format"`
+	Description string     `json:"description"`
+	Items       *SchemaRef `json:"items"`
+	Ref         string     `json:"$ref"`
+}
+
+// 测试配置
 type TestConfig struct {
 	BaseURL   string      `json:"base_url"`
 	TestCases []*TestCase `json:"test_cases"`
 }
 
-// 测试用例结构
+// 测试用例
 type TestCase struct {
 	Name        string                 `json:"name"`
 	Description string                 `json:"description"`
 	Skip        bool                   `json:"skip"`
-	Depends     []string               `json:"depends_on"`
+	DependsOn   []string               `json:"depends_on,omitempty"`
 	API         API                    `json:"api"`
 	Request     map[string]interface{} `json:"request"`
-	FileUpload  *FileUpload            `json:"file_upload"`
+	FileUpload  *FileUpload            `json:"file_upload,omitempty"`
 	Expect      ExpectedResponse       `json:"expect"`
-	Store       map[string]string      `json:"store"` // 存储响应中的值
+	Store       map[string]string      `json:"store,omitempty"`
 }
 
 // API定义
@@ -53,12 +104,12 @@ type FileUpload struct {
 // 期望的响应
 type ExpectedResponse struct {
 	StatusCode  int                    `json:"status_code"`
-	Contains    []string               `json:"contains"`
-	NotContains []string               `json:"not_contains"`
+	Contains    []string               `json:"contains,omitempty"`
+	NotContains []string               `json:"not_contains,omitempty"`
 	JSON        map[string]interface{} `json:"json"`
 }
 
-// 测试上下文，保存测试过程中的信息
+// 存储变量的上下文
 type TestContext struct {
 	Variables   map[string]interface{}
 	TestResults map[string]bool
@@ -72,31 +123,12 @@ func NewTestContext() *TestContext {
 	}
 }
 
-// 初始化随机数生成器
+// 初始化随机数种子
 func init() {
-	// 设置日志输出到控制台
-	log.SetOutput(os.Stdout)
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
-
-	// 初始化随机数生成器
 	rand.Seed(time.Now().UnixNano())
-
-	// 确保当前工作目录是test目录
-	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// 切换工作目录到test目录
-	if filepath.Base(dir) != "test" {
-		testDir := filepath.Join(dir, "test")
-		if _, err := os.Stat(testDir); !os.IsNotExist(err) {
-			os.Chdir(testDir)
-		}
-	}
 }
 
-// 生成指定长度的随机字符串
+// 生成随机字符串
 func randomString(length int) string {
 	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
 	b := make([]byte, length)
@@ -106,9 +138,19 @@ func randomString(length int) string {
 	return string(b)
 }
 
-// 生成只包含字母数字的随机字符串
-func randomAlphaNum(length int) string {
-	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+// 生成随机字符串(包含特殊字符)
+func randomComplexString(length int) string {
+	const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*"
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[rand.Intn(len(charset))]
+	}
+	return string(b)
+}
+
+// 生成随机数字
+func randomNumber(length int) string {
+	const charset = "0123456789"
 	b := make([]byte, length)
 	for i := range b {
 		b[i] = charset[rand.Intn(len(charset))]
@@ -119,427 +161,553 @@ func randomAlphaNum(length int) string {
 // 生成随机用户信息
 func generateRandomUserInfo() map[string]string {
 	randSuffix := randomString(8)
-	groupKey := randomAlphaNum(12)
 	return map[string]string{
-		"USERNAME": "testuser" + randSuffix,
-		"EMAIL":    "test" + randSuffix + "@example.com",
-		"PHONE":    "138" + randomString(8),
-		"GROUPKEY": groupKey,
+		"NAME":     "testuser_" + randSuffix,
+		"EMAIL":    "test_" + randSuffix + "@example.com",
+		"PASSWORD": "Test@123" + randomComplexString(6), // 更复杂的密码
 	}
 }
 
-func main() {
-	log.Printf("测试程序启动...")
-	configFile := flag.String("config", "test_config.json", "测试配置文件路径")
-	testName := flag.String("test", "", "指定测试用例名称")
-	skipEnvCheck := flag.Bool("skip-env", false, "跳过环境检测")
-	flag.Parse()
+// 从引用路径中提取定义名称
+func extractDefinitionName(ref string) string {
+	parts := strings.Split(ref, "/")
+	return parts[len(parts)-1]
+}
 
-	// 读取配置文件
-	log.Printf("加载配置文件: %s", *configFile)
-	config, err := loadConfig(*configFile)
-	if err != nil {
-		log.Fatalf("加载配置文件失败: %v", err)
-	}
-	log.Printf("成功加载测试用例数: %d", len(config.TestCases))
-
-	// 环境检测
-	if !*skipEnvCheck {
-		log.Printf("正在进行环境检测...")
-		if !RunEnvironmentCheck(config.BaseURL) {
-			log.Fatal("环境检测失败，测试终止")
-		}
-		log.Printf("环境检测通过")
+// 根据Schema生成请求数据
+func generateDataFromSchema(schema SchemaRef, definitions map[string]SwaggerDefinition) map[string]interface{} {
+	if schema.Ref == "" {
+		return make(map[string]interface{})
 	}
 
-	// 创建测试上下文
-	ctx := NewTestContext()
-	log.Printf("测试上下文已创建")
+	defName := extractDefinitionName(schema.Ref)
+	def, ok := definitions[defName]
+	if !ok {
+		return make(map[string]interface{})
+	}
 
-	// 运行测试
-	if *testName != "" {
-		// 运行指定测试
-		log.Printf("准备运行指定测试: %s", *testName)
-		found := false
-		for _, tc := range config.TestCases {
-			if tc.Name == *testName {
-				found = true
-				runTest(config, tc, ctx)
-				break
+	data := make(map[string]interface{})
+	for propName, propDef := range def.Properties {
+		switch propDef.Type {
+		case "string":
+			if strings.Contains(propName, "email") {
+				data[propName] = fmt.Sprintf("test_%s@example.com", randomString(5))
+			} else if strings.Contains(propName, "password") {
+				data[propName] = "Password123!" + randomString(4)
+			} else if strings.Contains(propName, "username") || strings.Contains(propName, "name") {
+				data[propName] = "test_" + randomString(8)
+			} else if strings.Contains(propName, "phone") {
+				data[propName] = "138" + randomNumber(8)
+			} else {
+				data[propName] = "test_" + randomString(5)
+			}
+		case "integer", "number":
+			data[propName] = rand.Intn(100)
+		case "boolean":
+			data[propName] = rand.Intn(2) == 1
+		case "array":
+			// 为数组创建空数组或随机项
+			data[propName] = []interface{}{}
+		case "object":
+			// 为对象递归生成数据
+			if propDef.Ref != "" {
+				subName := extractDefinitionName(propDef.Ref)
+				if subDef, ok := definitions[subName]; ok {
+					subData := make(map[string]interface{})
+					for subPropName, subPropDef := range subDef.Properties {
+						// 简单处理下嵌套对象
+						if subPropDef.Type == "string" {
+							subData[subPropName] = "nested_" + randomString(4)
+						} else if subPropDef.Type == "integer" {
+							subData[subPropName] = rand.Intn(100)
+						}
+					}
+					data[propName] = subData
+				}
+			} else {
+				data[propName] = map[string]interface{}{}
 			}
 		}
-		if !found {
-			log.Fatalf("未找到测试用例: %s", *testName)
-		}
-	} else {
-		// 运行所有测试
-		log.Printf("准备运行所有测试...")
-		runAllTests(config, ctx)
 	}
-
-	log.Printf("测试程序执行完毕")
+	return data
 }
 
-// CheckServerReady 检查后端服务是否准备就绪
-func CheckServerReady(baseURL string) bool {
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-	}
+// 从Swagger文档生成测试用例
+func generateTestCases(swaggerDoc *SwaggerDoc) []*TestCase {
+	testCases := []*TestCase{}
 
-	// 移除/health路径，只检查base URL是否可以访问
-	serverURL := strings.TrimSuffix(baseURL, "/api/oss")
-	resp, err := client.Get(serverURL)
-	if err != nil {
-		log.Printf("服务器连接失败: %v", err)
-		return false
-	}
-	defer resp.Body.Close()
-
-	log.Printf("服务器准备就绪，状态码: %d", resp.StatusCode)
-	return true
-}
-
-// CheckTestFilesExist 检查测试所需文件是否存在
-func CheckTestFilesExist() bool {
-	files := []string{
-		"test_config.json",
-		"test_file.txt",
-	}
-
-	for _, file := range files {
-		if _, err := os.Stat(file); os.IsNotExist(err) {
-			log.Printf("测试文件不存在: %s", file)
-			return false
-		}
-	}
-
-	log.Printf("所有测试文件存在")
-	return true
-}
-
-// RunEnvironmentCheck 主环境检测函数
-func RunEnvironmentCheck(baseURL string) bool {
-	fmt.Println("===== 开始环境检测 =====")
-
-	serverReady := CheckServerReady(baseURL)
-	filesExist := CheckTestFilesExist()
-
-	fmt.Println("===== 环境检测完成 =====")
-
-	return serverReady && filesExist
-}
-
-// 加载测试配置并替换模板变量
-func loadConfig(configFile string) (*TestConfig, error) {
-	file, err := os.ReadFile(configFile)
-	if err != nil {
-		return nil, err
-	}
-
-	// 生成随机变量
+	// 首先创建用户注册和登录测试
 	randomVars := generateRandomUserInfo()
 
-	// 替换模板变量
-	content := string(file)
-	for key, value := range randomVars {
-		pattern := fmt.Sprintf("{{%s}}", key)
-		content = strings.ReplaceAll(content, pattern, value)
+	// 创建用户注册测试
+	registerTest := &TestCase{
+		Name:        "post_api_oss_user_register",
+		Description: "用户注册",
+		API: API{
+			Endpoint: "/api/oss/user/register",
+			Method:   "POST",
+			Auth:     false,
+		},
+		Request: map[string]interface{}{
+			"email":    randomVars["EMAIL"],
+			"password": randomVars["PASSWORD"],
+			"name":     randomVars["NAME"],
+		},
+		Expect: ExpectedResponse{
+			StatusCode: 200,
+			JSON: map[string]interface{}{
+				"code": 200,
+			},
+		},
+		Store: map[string]string{
+			"USER_ID": "data.id",
+		},
 	}
+	testCases = append(testCases, registerTest)
 
-	log.Printf("随机用户信息: %v", randomVars)
-
-	// 解析配置
-	var config TestConfig
-	err = json.Unmarshal([]byte(content), &config)
-	if err != nil {
-		return nil, err
+	// 创建用户登录测试，依赖于注册测试
+	loginTest := &TestCase{
+		Name:        "post_api_oss_user_login",
+		Description: "用户登录",
+		DependsOn:   []string{"post_api_oss_user_register"},
+		API: API{
+			Endpoint: "/api/oss/user/login",
+			Method:   "POST",
+			Auth:     false,
+		},
+		Request: map[string]interface{}{
+			"email":    randomVars["EMAIL"],
+			"password": randomVars["PASSWORD"],
+		},
+		Expect: ExpectedResponse{
+			StatusCode: 200,
+			JSON: map[string]interface{}{
+				"code": 200,
+			},
+		},
+		Store: map[string]string{
+			"TOKEN": "data.token",
+		},
 	}
+	testCases = append(testCases, loginTest)
 
-	return &config, nil
-}
-
-// 运行所有测试
-func runAllTests(config *TestConfig, ctx *TestContext) {
-	total := 0
-	passed := 0
-	skipped := 0
-	failed := 0
-
-	for _, tc := range config.TestCases {
-		if tc.Skip {
-			log.Printf("[SKIP] %s", tc.Name)
-			skipped++
+	// 遍历Swagger文档中的所有路径
+	for path, pathItem := range swaggerDoc.Paths {
+		// 跳过注册和登录的API，因为我们已经手动创建了
+		if strings.Contains(path, "/user/register") || strings.Contains(path, "/user/login") {
 			continue
 		}
 
-		total++
-		log.Printf("\n=== Running Test: %s ===", tc.Name)
-		log.Printf("Description: %s", tc.Description)
-
-		// 检查依赖的测试是否已通过
-		dependsFailed := false
-		for _, dep := range tc.Depends {
-			if !ctx.TestResults[dep] {
-				log.Printf("[SKIP] Dependency '%s' failed or was not run", dep)
-				dependsFailed = true
-				break
+		for method, operation := range pathItem {
+			// 结构体不能与nil比较，检查是否为零值结构体
+			if operation.Summary == "" && len(operation.Tags) == 0 {
+				continue
 			}
-		}
 
-		if dependsFailed {
-			failed++
-			continue
-		}
+			// 跳过已经手动创建的注册和登录测试
+			testName := strings.ToLower(method + path)
+			if testName == "post_api_oss_user_register" || testName == "post_api_oss_user_login" {
+				continue
+			}
 
-		result := runTest(config, tc, ctx)
-		if result {
-			passed++
-		} else {
-			failed++
+			testCase := &TestCase{
+				Name:        testName,
+				Description: operation.Summary,
+				API: API{
+					Endpoint: path,
+					Method:   strings.ToUpper(method),
+					Auth:     false,
+				},
+				Request: make(map[string]interface{}),
+				Expect: ExpectedResponse{
+					StatusCode: 200,
+					JSON: map[string]interface{}{
+						"code": 200,
+					},
+				},
+				Store: make(map[string]string),
+			}
+
+			// 如果路径包含需要认证的关键词，设置依赖于登录测试和Auth标记
+			if strings.Contains(path, "/user/") ||
+				strings.Contains(path, "/group/") ||
+				strings.Contains(path, "/project/") ||
+				strings.Contains(path, "/file/") ||
+				strings.Contains(path, "/share/") ||
+				!strings.Contains(path, "/register") &&
+					!strings.Contains(path, "/login") {
+				testCase.DependsOn = []string{"post_api_oss_user_login"}
+				testCase.API.Auth = true
+			}
+
+			// 创建请求体
+			request := make(map[string]interface{})
+			for _, param := range operation.Parameters {
+				if param.In == "body" && param.Schema.Ref != "" {
+					// 处理请求体
+					bodyData := generateDataFromSchema(param.Schema, swaggerDoc.Definitions)
+					for k, v := range bodyData {
+						request[k] = v
+					}
+				} else if param.In == "query" && param.Required {
+					// 处理查询参数
+					switch param.Type {
+					case "string":
+						request[param.Name] = "query_" + randomString(5)
+					case "integer", "number":
+						request[param.Name] = rand.Intn(100)
+					case "boolean":
+						request[param.Name] = rand.Intn(2) == 1
+					}
+				} else if param.In == "path" && param.Name == "id" {
+					// 处理路径参数
+					request[param.Name] = "${USER_ID}"
+				}
+			}
+
+			// 设置请求体
+			testCase.Request = request
+
+			// 处理创建操作的存储变量
+			if strings.Contains(testName, "create") && method == "post" {
+				testCase.Store[strings.Replace(testName, "create", "id", 1)] = "data.id"
+			}
+
+			testCases = append(testCases, testCase)
 		}
 	}
 
-	log.Printf("\n=== Test Summary ===")
-	log.Printf("Total tests: %d", total)
-	log.Printf("Passed: %d", passed)
-	log.Printf("Failed: %d", failed)
-	log.Printf("Skipped: %d", skipped)
+	return testCases
 }
 
-// 运行单个测试
-func runTest(config *TestConfig, tc *TestCase, ctx *TestContext) bool {
-	// 替换URL中的变量
-	url := config.BaseURL + replaceVars(tc.API.Endpoint, ctx)
+// 从Swagger文档生成测试配置
+func generateTestConfig(swaggerDoc *SwaggerDoc, baseURL string) *TestConfig {
+	testCases := generateTestCases(swaggerDoc)
 
-	// 准备请求体
-	var reqBody []byte
+	return &TestConfig{
+		BaseURL:   baseURL,
+		TestCases: testCases,
+	}
+}
+
+// 执行HTTP请求
+func executeRequest(testCase *TestCase, baseURL string, ctx *TestContext) (*http.Response, []byte, error) {
+	// 替换变量
+	endpoint := testCase.API.Endpoint
+	for k, v := range ctx.Variables {
+		if strVal, ok := v.(string); ok {
+			endpoint = strings.ReplaceAll(endpoint, "${"+k+"}", strVal)
+		}
+	}
+
+	// 构建URL
+	url := fmt.Sprintf("%s%s", baseURL, endpoint)
+
+	// 替换请求体中的变量
+	requestBody := make(map[string]interface{})
+	for k, v := range testCase.Request {
+		if strVal, ok := v.(string); ok {
+			if strings.HasPrefix(strVal, "${") && strings.HasSuffix(strVal, "}") {
+				varName := strVal[2 : len(strVal)-1]
+				if val, ok := ctx.Variables[varName]; ok {
+					requestBody[k] = val
+				}
+			} else {
+				requestBody[k] = strVal
+			}
+		} else {
+			requestBody[k] = v
+		}
+	}
+
+	// 创建请求
+	var req *http.Request
 	var err error
 
-	// 处理请求参数中的变量
-	processedRequest := make(map[string]interface{})
-	for k, v := range tc.Request {
-		if strVal, ok := v.(string); ok && strings.HasPrefix(strVal, "${") && strings.HasSuffix(strVal, "}") {
-			varName := strVal[2 : len(strVal)-1]
-			if value, exists := ctx.Variables[varName]; exists {
-				processedRequest[k] = value
-			} else {
-				log.Printf("[WARN] Variable '%s' not found in context", varName)
-				processedRequest[k] = v
-			}
-		} else {
-			processedRequest[k] = v
-		}
-	}
-
-	var req *http.Request
-
-	if tc.FileUpload != nil {
-		// 处理文件上传
-		body := &bytes.Buffer{}
-		writer := multipart.NewWriter(body)
-
-		// 添加表单字段
-		for k, v := range processedRequest {
-			field, err := writer.CreateFormField(k)
-			if err != nil {
-				log.Printf("[ERROR] Failed to create form field: %v", err)
-				return false
-			}
-			fmt.Fprintf(field, "%v", v)
-		}
-
-		// 添加文件
-		file, err := os.Open(tc.FileUpload.FilePath)
+	if testCase.API.Method == "GET" {
+		req, err = http.NewRequest("GET", url, nil)
 		if err != nil {
-			log.Printf("[ERROR] Failed to open file %s: %v", tc.FileUpload.FilePath, err)
-			return false
-		}
-		defer file.Close()
-
-		part, err := writer.CreateFormFile(tc.FileUpload.FieldName, tc.FileUpload.FileName)
-		if err != nil {
-			log.Printf("[ERROR] Failed to create form file: %v", err)
-			return false
-		}
-		_, err = io.Copy(part, file)
-		if err != nil {
-			log.Printf("[ERROR] Failed to copy file content: %v", err)
-			return false
+			return nil, nil, err
 		}
 
-		writer.Close()
-		req, err = http.NewRequest(tc.API.Method, url, body)
-		if err != nil {
-			log.Printf("[ERROR] Failed to create request: %v", err)
-			return false
+		// 添加查询参数
+		q := req.URL.Query()
+		for k, v := range requestBody {
+			q.Add(k, fmt.Sprintf("%v", v))
 		}
-		req.Header.Set("Content-Type", writer.FormDataContentType())
+		req.URL.RawQuery = q.Encode()
 	} else {
-		// 普通请求
-		reqBody, err = json.Marshal(processedRequest)
+		// 序列化请求体
+		jsonBody, err := json.Marshal(requestBody)
 		if err != nil {
-			log.Printf("[ERROR] Failed to marshal request: %v", err)
-			return false
+			return nil, nil, err
 		}
 
-		req, err = http.NewRequest(tc.API.Method, url, bytes.NewBuffer(reqBody))
+		req, err = http.NewRequest(testCase.API.Method, url, strings.NewReader(string(jsonBody)))
 		if err != nil {
-			log.Printf("[ERROR] Failed to create request: %v", err)
-			return false
+			return nil, nil, err
 		}
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	// 添加认证头
-	if tc.API.Auth && ctx.AuthToken != "" {
+	// 设置授权头
+	if testCase.API.Auth && ctx.AuthToken != "" {
 		req.Header.Set("Authorization", "Bearer "+ctx.AuthToken)
 	}
 
-	// 发送请求
+	// 执行请求
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("[ERROR] Request failed: %v", err)
-		return false
+		return nil, nil, err
 	}
 	defer resp.Body.Close()
 
 	// 读取响应
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("[ERROR] Failed to read response: %v", err)
-		return false
+		return nil, nil, err
 	}
 
+	return resp, respBody, nil
+}
+
+// 从响应中提取值
+func extractValue(jsonData map[string]interface{}, path string) (interface{}, bool) {
+	parts := strings.Split(path, ".")
+	var current interface{} = jsonData
+
+	for _, part := range parts {
+		if m, ok := current.(map[string]interface{}); ok {
+			if val, exists := m[part]; exists {
+				current = val
+				continue
+			}
+		}
+		return nil, false
+	}
+
+	return current, true
+}
+
+// 验证响应结果
+func validateResponse(testCase *TestCase, resp *http.Response, body []byte, ctx *TestContext) (bool, error) {
 	// 检查状态码
-	if resp.StatusCode != tc.Expect.StatusCode {
-		log.Printf("[FAIL] Expected status code %d but got %d", tc.Expect.StatusCode, resp.StatusCode)
-		log.Printf("Response: %s", string(respBody))
-		return false
+	if resp.StatusCode != testCase.Expect.StatusCode {
+		return false, fmt.Errorf("状态码不匹配: 预期 %d, 实际 %d", testCase.Expect.StatusCode, resp.StatusCode)
 	}
 
-	// 检查响应内容包含的字符串
-	respStr := string(respBody)
-	for _, str := range tc.Expect.Contains {
-		if !strings.Contains(respStr, str) {
-			log.Printf("[FAIL] Response does not contain '%s'", str)
-			log.Printf("Response: %s", respStr)
-			return false
-		}
-	}
-
-	// 检查响应不应包含的字符串
-	for _, str := range tc.Expect.NotContains {
-		if strings.Contains(respStr, str) {
-			log.Printf("[FAIL] Response contains '%s' but should not", str)
-			log.Printf("Response: %s", respStr)
-			return false
-		}
-	}
-
-	// 解析JSON响应
+	// 检查响应体
 	var respJSON map[string]interface{}
-	if err := json.Unmarshal(respBody, &respJSON); err != nil {
-		log.Printf("[ERROR] Failed to parse JSON response: %v", err)
-		log.Printf("Response: %s", respStr)
+	if err := json.Unmarshal(body, &respJSON); err != nil {
+		return false, fmt.Errorf("解析JSON响应失败: %v", err)
+	}
+
+	// 检查JSON期望值
+	for path, expectedVal := range testCase.Expect.JSON {
+		actualVal, found := extractValue(respJSON, path)
+		if !found {
+			return false, fmt.Errorf("未找到响应中的路径: %s", path)
+		}
+
+		// 检查值是否匹配
+		if fmt.Sprintf("%v", expectedVal) != fmt.Sprintf("%v", actualVal) {
+			return false, fmt.Errorf("值不匹配: 路径 %s, 预期 %v, 实际 %v", path, expectedVal, actualVal)
+		}
+	}
+
+	// 检查包含的字符串
+	respString := string(body)
+	for _, str := range testCase.Expect.Contains {
+		if !strings.Contains(respString, str) {
+			return false, fmt.Errorf("响应中未包含预期的字符串: %s", str)
+		}
+	}
+
+	// 检查不包含的字符串
+	for _, str := range testCase.Expect.NotContains {
+		if strings.Contains(respString, str) {
+			return false, fmt.Errorf("响应中包含不应出现的字符串: %s", str)
+		}
+	}
+
+	// 存储指定的变量
+	for varName, path := range testCase.Store {
+		if strings.HasPrefix(path, "request.") {
+			// 从请求中提取值
+			requestField := path[8:]
+			if val, ok := testCase.Request[requestField]; ok {
+				ctx.Variables[varName] = val
+				continue
+			}
+		} else {
+			// 从响应中提取值
+			val, found := extractValue(respJSON, path)
+			if found {
+				ctx.Variables[varName] = val
+				// 特殊处理token
+				if varName == "TOKEN" {
+					ctx.AuthToken = fmt.Sprintf("%v", val)
+				}
+			}
+		}
+	}
+
+	return true, nil
+}
+
+// 检查服务可用性
+func checkServiceAvailability(baseURL string) bool {
+	// 简单发送GET请求到根路径检查服务是否可用
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(baseURL)
+	if err != nil {
+		log.Printf("后端服务不可用，错误: %v", err)
 		return false
 	}
+	defer resp.Body.Close()
 
-	// 记录整个响应JSON
-	jsonBytes, _ := json.MarshalIndent(respJSON, "", "  ")
-	log.Printf("[DEBUG] Response JSON: %s", jsonBytes)
-
-	// 验证JSON响应
-	for path, expectedValue := range tc.Expect.JSON {
-		parts := strings.Split(path, ".")
-		value := getNestedValue(respJSON, parts)
-		if !compareValues(value, expectedValue) {
-			log.Printf("[FAIL] Expected '%s' to be '%v' but got '%v'", path, expectedValue, value)
-			log.Printf("Response: %s", respStr)
-			return false
-		}
-	}
-
-	// 存储需要的值
-	for name, path := range tc.Store {
-		parts := strings.Split(path, ".")
-		value := getNestedValue(respJSON, parts)
-		if value != nil {
-			ctx.Variables[name] = value
-			log.Printf("[INFO] Stored '%s' = '%v'", name, value)
-		} else {
-			log.Printf("[WARN] Failed to extract value for path '%s'", path)
-			log.Printf("Response JSON: %v", respJSON)
-		}
-	}
-
-	// 存储认证令牌
-	if tc.Name == "login_user" && ctx.Variables["token"] != nil {
-		ctx.AuthToken = fmt.Sprintf("%v", ctx.Variables["token"])
-		log.Printf("[INFO] Auth token stored")
-	}
-
-	// 测试通过
-	log.Printf("[PASS] Test passed")
-	ctx.TestResults[tc.Name] = true
+	log.Printf("后端服务状态检查: %d", resp.StatusCode)
+	// 即使返回404或其他状态码，只要服务响应就认为是可用的
 	return true
 }
 
-// 替换字符串中的变量
-func replaceVars(str string, ctx *TestContext) string {
-	for varName, value := range ctx.Variables {
-		str = strings.ReplaceAll(str, "${"+varName+"}", fmt.Sprintf("%v", value))
-	}
-	return str
-}
+// 运行测试用例
+func runTest(testCase *TestCase, baseURL string, ctx *TestContext) bool {
+	log.Printf("执行测试: %s - %s", testCase.Name, testCase.Description)
 
-// 获取嵌套的JSON值
-func getNestedValue(data map[string]interface{}, path []string) interface{} {
-	if len(path) == 0 {
-		return nil
-	}
+	// 检查依赖
+	for _, dep := range testCase.DependsOn {
+		if passed, ok := ctx.TestResults[dep]; !ok || !passed {
+			log.Printf("跳过测试 %s，因为依赖的测试 %s 未通过", testCase.Name, dep)
+			return false
+		}
 
-	// 处理当前层级
-	current := path[0]
-
-	// 处理数组索引，如 data.0.id 格式
-	if index, err := strconv.Atoi(current); err == nil {
-		// 如果当前路径是数字，尝试作为数组索引处理
-		if arr, ok := data["data"].([]interface{}); ok && index >= 0 && index < len(arr) {
-			if len(path) == 1 {
-				return arr[index]
+		// 特殊处理登录测试依赖，确保获取到认证Token
+		if dep == "post_api_oss_user_login" && testCase.API.Auth {
+			if token, ok := ctx.Variables["TOKEN"]; ok {
+				ctx.AuthToken = fmt.Sprintf("%v", token)
+			} else {
+				log.Printf("无法获取认证Token，可能导致测试失败")
 			}
-
-			// 如果数组元素是map，继续递归处理
-			if nestedMap, ok := arr[index].(map[string]interface{}); ok {
-				return getNestedValue(nestedMap, path[1:])
-			}
-			return nil
 		}
 	}
 
-	// 常规的对象属性访问
-	if len(path) == 1 {
-		return data[current]
+	// 执行请求
+	var resp *http.Response
+	var body []byte
+	var err error
+
+	// 判断是否为文件上传测试
+	if testCase.FileUpload != nil {
+		resp, body, err = executeFileUploadRequest(testCase, baseURL, ctx)
+	} else {
+		resp, body, err = executeRequest(testCase, baseURL, ctx)
 	}
 
-	// 递归处理嵌套对象
-	if nested, ok := data[current].(map[string]interface{}); ok {
-		return getNestedValue(nested, path[1:])
+	if err != nil {
+		log.Printf("执行请求失败: %v", err)
+		return false
 	}
 
-	return nil
+	// 验证响应
+	success, err := validateResponse(testCase, resp, body, ctx)
+	if err != nil || !success {
+		if err != nil {
+			log.Printf("测试失败: %v", err)
+		} else {
+			log.Printf("测试失败: 响应验证不通过")
+		}
+		ctx.TestResults[testCase.Name] = false
+		return false
+	}
+
+	log.Printf("测试通过: %s", testCase.Name)
+	ctx.TestResults[testCase.Name] = true
+	return true
 }
 
-// 比较两个值是否相等
-func compareValues(actual, expected interface{}) bool {
-	// 将字符串形式的数字转换为数字进行比较
-	if strActual, okA := actual.(string); okA {
-		if numExpected, okE := expected.(float64); okE {
-			if numActual, err := json.Number(strActual).Float64(); err == nil {
-				return numActual == numExpected
-			}
+// 运行所有测试
+func runTests(config *TestConfig) {
+	ctx := NewTestContext()
+	successCount := 0
+	failCount := 0
+
+	// 检查后端服务可用性
+	if !checkServiceAvailability(config.BaseURL) {
+		log.Println("警告: 后端服务可能不可用，测试可能会失败")
+	}
+
+	// 统计测试用例总数
+	totalTests := len(config.TestCases)
+	log.Printf("开始执行测试: 共 %d 个测试用例", totalTests)
+
+	// 执行测试
+	for _, testCase := range config.TestCases {
+		if testCase.Skip {
+			log.Printf("跳过测试: %s", testCase.Name)
+			continue
+		}
+
+		if runTest(testCase, config.BaseURL, ctx) {
+			successCount++
+		} else {
+			failCount++
 		}
 	}
-	return fmt.Sprintf("%v", actual) == fmt.Sprintf("%v", expected)
+
+	// 输出测试统计
+	log.Printf("测试完成: 共 %d 个测试用例, 通过 %d, 失败 %d", totalTests, successCount, failCount)
+}
+
+func main() {
+	// 命令行参数
+	swaggerFile := flag.String("swagger", "docs/swagger/swagger.json", "Swagger文档路径")
+	baseURL := flag.String("base", "http://localhost:8080", "API基础URL")
+	outputFile := flag.String("output", "test_config.json", "测试配置输出文件")
+	runFlag := flag.Bool("run", false, "是否执行测试")
+	flag.Parse()
+
+	// 读取Swagger文档
+	log.Printf("从文件读取Swagger文档: %s", *swaggerFile)
+	data, err := ioutil.ReadFile(*swaggerFile)
+	if err != nil {
+		log.Fatalf("读取Swagger文件失败: %v", err)
+	}
+
+	// 解析Swagger文档
+	var swaggerDoc SwaggerDoc
+	err = json.Unmarshal(data, &swaggerDoc)
+	if err != nil {
+		log.Fatalf("解析Swagger文档失败: %v", err)
+	}
+
+	// 生成测试配置
+	testConfig := generateTestConfig(&swaggerDoc, *baseURL)
+
+	// 写入配置文件
+	if *outputFile != "" {
+		// 确保目录存在
+		err = os.MkdirAll(filepath.Dir(*outputFile), 0755)
+		if err != nil {
+			log.Fatalf("创建输出目录失败: %v", err)
+		}
+
+		output, err := json.MarshalIndent(testConfig, "", "  ")
+		if err != nil {
+			log.Fatalf("序列化测试配置失败: %v", err)
+		}
+
+		err = ioutil.WriteFile(*outputFile, output, 0644)
+		if err != nil {
+			log.Fatalf("写入测试配置文件失败: %v", err)
+		}
+
+		log.Printf("成功生成测试配置文件: %s", *outputFile)
+	}
+
+	// 执行测试
+	if *runFlag {
+		runTests(testConfig)
+	}
 }

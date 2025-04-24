@@ -1,134 +1,45 @@
 {
-  "base_url": "http://localhost:8080/api/oss",
+  "base_url": "http://localhost:8080",
   "test_cases": [
     {
-      "name": "register_user",
-      "description": "测试用户注册功能",
+      "name": "post_api_oss_user_register",
+      "description": "用户注册",
       "skip": false,
       "api": {
-        "endpoint": "/user/register",
+        "endpoint": "/api/oss/user/register",
         "method": "POST",
         "auth": false
       },
       "request": {
-        "username": "{{USERNAME}}",
-        "password": "Password123!",
-        "email": "{{EMAIL}}",
-        "name": "自动化测试用户",
-        "phone": "{{PHONE}}"
+        "email": "test_0z8glbl6@example.com",
+        "name": "testuser_0z8glbl6",
+        "password": "Test@123Yb7EQ!"
       },
       "expect": {
         "status_code": 200,
-        "contains": ["success"],
         "json": {
           "code": 200
         }
+      },
+      "store": {
+        "USER_ID": "data.id"
       }
     },
     {
-      "name": "login_user",
-      "description": "测试用户登录功能",
+      "name": "post_api_oss_user_login",
+      "description": "用户登录",
       "skip": false,
-      "depends_on": ["register_user"],
+      "depends_on": [
+        "post_api_oss_user_register"
+      ],
       "api": {
-        "endpoint": "/user/login",
+        "endpoint": "/api/oss/user/login",
         "method": "POST",
         "auth": false
       },
       "request": {
-        "username": "{{USERNAME}}",
-        "password": "Password123!",
-        "email": "{{EMAIL}}"
-      },
-      "expect": {
-        "status_code": 200,
-        "contains": ["success"],
-        "json": {
-          "code": 200
-        }
-      },
-      "store": {
-        "token": "data.token",
-        "user_id": "data.user_info.id"
-      }
-    },
-    {
-      "name": "get_user_info",
-      "description": "获取用户信息",
-      "skip": false,
-      "depends_on": ["login_user"],
-      "api": {
-        "endpoint": "/user/info",
-        "method": "GET",
-        "auth": true
-      },
-      "request": {},
-      "expect": {
-        "status_code": 200,
-        "json": {
-          "code": 200,
-          "data.email": "{{EMAIL}}"
-        }
-      }
-    },
-    {
-      "name": "create_group",
-      "description": "创建群组",
-      "skip": false,
-      "depends_on": ["login_user"],
-      "api": {
-        "endpoint": "/group/create",
-        "method": "POST",
-        "auth": true
-      },
-      "request": {
-        "name": "测试群组-自动化-{{USERNAME}}",
-        "description": "这是一个自动化测试创建的群组",
-        "group_key": "{{GROUPKEY}}"
-      },
-      "expect": {
-        "status_code": 200,
-        "json": {
-          "code": 200
-        }
-      }
-    },
-    {
-      "name": "get_user_groups",
-      "description": "获取用户群组列表",
-      "skip": false,
-      "depends_on": ["create_group"],
-      "api": {
-        "endpoint": "/group/user",
-        "method": "GET",
-        "auth": true
-      },
-      "request": {},
-      "expect": {
-        "status_code": 200,
-        "json": {
-          "code": 200
-        },
-        "contains": ["测试群组-自动化-{{USERNAME}}"]
-      },
-      "store": {
-        "group_id": "data.0.id"
-      }
-    },
-    {
-      "name": "create_project",
-      "description": "创建项目",
-      "skip": false,
-      "depends_on": ["create_group", "get_user_groups"],
-      "api": {
-        "endpoint": "/project/create",
-        "method": "POST",
-        "auth": true
-      },
-      "request": {
-        "name": "测试项目-自动化-{{USERNAME}}",
-        "description": "这是一个自动化测试创建的项目",
-        "group_id": "${group_id}"
+        "email": "test_0z8glbl6@example.com",
+        "password": "Test@123Yb7EQ!"
       },
       "expect": {
         "status_code": 200,
@@ -137,115 +48,26 @@
         }
       },
       "store": {
-        "project_id": "data.id"
+        "TOKEN": "data.token"
       }
     },
     {
-      "name": "get_user_projects",
-      "description": "获取用户项目列表",
+      "name": "get/api/oss/group/member/add/{id}",
+      "description": "添加成员",
       "skip": false,
-      "depends_on": ["create_project"],
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
       "api": {
-        "endpoint": "/project/user",
-        "method": "GET",
-        "auth": true
-      },
-      "request": {},
-      "expect": {
-        "status_code": 200,
-        "json": {
-          "code": 200
-        },
-        "contains": ["测试项目-自动化-{{USERNAME}}"]
-      }
-    },
-    {
-      "name": "create_folder",
-      "description": "创建文件夹",
-      "skip": false,
-      "depends_on": ["create_project"],
-      "api": {
-        "endpoint": "/file/folder",
-        "method": "POST",
-        "auth": true
-      },
-      "request": {
-        "project_id": "${project_id}",
-        "path": "/",
-        "folder_name": "测试目录-{{USERNAME}}"
-      },
-      "expect": {
-        "status_code": 200,
-        "json": {
-          "code": 200,
-          "data.is_folder": true
-        }
-      }
-    },
-    {
-      "name": "upload_file",
-      "description": "上传文件测试",
-      "skip": false,
-      "depends_on": ["create_project"],
-      "api": {
-        "endpoint": "/file/upload",
-        "method": "POST",
-        "auth": true
-      },
-      "request": {
-        "project_id": "${project_id}",
-        "path": "/",
-        "comment": "自动化测试上传的文件-{{USERNAME}}",
-        "overwrite": true
-      },
-      "file_upload": {
-        "field_name": "file",
-        "file_name": "test_file.txt",
-        "file_path": "test_file.txt"
-      },
-      "expect": {
-        "status_code": 200,
-        "json": {
-          "code": 200
-        }
-      },
-      "store": {
-        "file_id": "data.id"
-      }
-    },
-    {
-      "name": "list_files",
-      "description": "列出项目文件",
-      "skip": false,
-      "depends_on": ["upload_file", "create_folder"],
-      "api": {
-        "endpoint": "/file/list",
+        "endpoint": "/api/oss/group/member/add/{id}",
         "method": "GET",
         "auth": true
       },
       "request": {
-        "project_id": "${project_id}",
-        "path": "/"
+        "id": "${USER_ID}",
+        "role": "query_2xoj5",
+        "user_id": 44
       },
-      "expect": {
-        "status_code": 200,
-        "json": {
-          "code": 200
-        },
-        "contains": ["test_file.txt", "测试目录-{{USERNAME}}"]
-      }
-    },
-    {
-      "name": "delete_file",
-      "description": "删除文件",
-      "skip": false,
-      "depends_on": ["upload_file"],
-      "api": {
-        "endpoint": "/file/delete/${file_id}",
-        "method": "GET",
-        "auth": true
-      },
-      "request": {},
       "expect": {
         "status_code": 200,
         "json": {
@@ -254,42 +76,924 @@
       }
     },
     {
-      "name": "create_share",
-      "description": "创建文件分享",
+      "name": "get/api/oss/group/member/list/{id}",
+      "description": "获取成员列表",
       "skip": false,
-      "depends_on": ["upload_file"],
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
       "api": {
-        "endpoint": "/file/share",
+        "endpoint": "/api/oss/group/member/list/{id}",
+        "method": "GET",
+        "auth": true
+      },
+      "request": {
+        "id": "${USER_ID}"
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "post/api/oss/project/permission/set",
+      "description": "设置项目成员权限",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/project/permission/set",
         "method": "POST",
         "auth": true
       },
       "request": {
-        "file_id": "${file_id}",
-        "password": "123456",
-        "expire_hours": 24,
-        "download_limit": 5
+        "expire_at": "test_fae7r",
+        "project_id": "test_z0saf",
+        "role": "test_iqrg8",
+        "user_id": "test_qo366"
       },
       "expect": {
         "status_code": 200,
         "json": {
           "code": 200
         }
-      },
-      "store": {
-        "share_code": "data.share_code"
       }
     },
     {
-      "name": "get_share_info",
+      "name": "get/api/oss/role/delete/{id}",
+      "description": "删除角色",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/role/delete/{id}",
+        "method": "GET",
+        "auth": true
+      },
+      "request": {
+        "id": "${USER_ID}"
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "get/api/oss/share/{code}",
       "description": "获取分享信息",
       "skip": false,
-      "depends_on": ["create_share"],
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
       "api": {
-        "endpoint": "/share/${share_code}",
+        "endpoint": "/api/oss/share/{code}",
         "method": "GET",
-        "auth": false
+        "auth": true
       },
       "request": {},
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "get/api/oss/file/download/{id}",
+      "description": "下载文件",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/file/download/{id}",
+        "method": "GET",
+        "auth": true
+      },
+      "request": {
+        "id": "${USER_ID}"
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "post/api/oss/file/upload",
+      "description": "上传文件",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/file/upload",
+        "method": "POST",
+        "auth": true
+      },
+      "request": {},
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "get/api/oss/group/member/remove/{id}",
+      "description": "移除成员",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/group/member/remove/{id}",
+        "method": "GET",
+        "auth": true
+      },
+      "request": {
+        "id": "${USER_ID}",
+        "user_id": 58
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "post/api/oss/user/password",
+      "description": "更新密码",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/user/password",
+        "method": "POST",
+        "auth": true
+      },
+      "request": {
+        "new_password": "Password123!rpjo",
+        "old_password": "Password123!wqr3"
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "post/api/oss/group/create",
+      "description": "创建群组",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/group/create",
+        "method": "POST",
+        "auth": true
+      },
+      "request": {
+        "description": "test_r9141",
+        "group_key": "test_jznzz",
+        "name": "test_fdm8j8mc"
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      },
+      "store": {
+        "post/api/oss/group/id": "data.id"
+      }
+    },
+    {
+      "name": "get/api/oss/group/list",
+      "description": "获取群组列表",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/group/list",
+        "method": "GET",
+        "auth": true
+      },
+      "request": {},
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "get/api/oss/user/info",
+      "description": "获取用户信息",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/user/info",
+        "method": "GET",
+        "auth": true
+      },
+      "request": {},
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "get/api/oss/project/detail/{id}",
+      "description": "获取项目详情",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/project/detail/{id}",
+        "method": "GET",
+        "auth": true
+      },
+      "request": {
+        "id": "${USER_ID}"
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "post/api/oss/project/permission/remove",
+      "description": "移除项目成员权限",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/project/permission/remove",
+        "method": "POST",
+        "auth": true
+      },
+      "request": {
+        "project_id": "test_i0932",
+        "user_id": "test_7ubn6"
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "get/api/oss/project/delete/{id}",
+      "description": "删除项目",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/project/delete/{id}",
+        "method": "GET",
+        "auth": true
+      },
+      "request": {
+        "id": "${USER_ID}"
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "get/api/oss/project/user",
+      "description": "获取用户参与的项目",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/project/user",
+        "method": "GET",
+        "auth": true
+      },
+      "request": {},
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "post/api/oss/role/create",
+      "description": "创建角色",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/role/create",
+        "method": "POST",
+        "auth": true
+      },
+      "request": {
+        "code": "test_rtnjw",
+        "description": "test_2hx2p",
+        "name": "test_2cosd3i4"
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      },
+      "store": {
+        "post/api/oss/role/id": "data.id"
+      }
+    },
+    {
+      "name": "get/api/oss/file/versions/{id}",
+      "description": "获取文件版本列表",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/file/versions/{id}",
+        "method": "GET",
+        "auth": true
+      },
+      "request": {
+        "id": "${USER_ID}"
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "get/api/oss/group/user",
+      "description": "获取用户所属的群组",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/group/user",
+        "method": "GET",
+        "auth": true
+      },
+      "request": {},
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "get/api/oss/user/roles/{id}",
+      "description": "获取用户角色",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/user/roles/{id}",
+        "method": "GET",
+        "auth": true
+      },
+      "request": {
+        "id": "${USER_ID}"
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "post/api/oss/user/roles/{id}",
+      "description": "分配用户角色",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/user/roles/{id}",
+        "method": "POST",
+        "auth": true
+      },
+      "request": {
+        "id": "${USER_ID}"
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "post/api/oss/user/roles/{id}/remove",
+      "description": "移除用户角色",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/user/roles/{id}/remove",
+        "method": "POST",
+        "auth": true
+      },
+      "request": {
+        "id": "${USER_ID}"
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "post/api/oss/group/update",
+      "description": "更新群组",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/group/update",
+        "method": "POST",
+        "auth": true
+      },
+      "request": {
+        "description": "test_iycsw",
+        "id": "test_6tcof",
+        "name": "test_z5m8d06l",
+        "status": 68
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "post/api/oss/project/update",
+      "description": "更新项目",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/project/update",
+        "method": "POST",
+        "auth": true
+      },
+      "request": {
+        "description": "test_49w7u",
+        "id": "test_g0zrr",
+        "name": "test_zrtpwfvp",
+        "status": 43
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "get/api/oss/user/list",
+      "description": "获取用户列表",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/user/list",
+        "method": "GET",
+        "auth": true
+      },
+      "request": {},
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "get/api/oss/user/status/{id}",
+      "description": "更新用户状态",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/user/status/{id}",
+        "method": "GET",
+        "auth": true
+      },
+      "request": {
+        "id": "${USER_ID}",
+        "status": 97
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "post/api/oss/user/update",
+      "description": "更新用户信息",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/user/update",
+        "method": "POST",
+        "auth": true
+      },
+      "request": {
+        "avatar": "test_8sms1",
+        "name": "test_4xa3w9py"
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "get/api/oss/file/list",
+      "description": "获取文件列表",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/file/list",
+        "method": "GET",
+        "auth": true
+      },
+      "request": {
+        "project_id": 32
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "get/api/oss/project/users/{id}",
+      "description": "列出项目成员",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/project/users/{id}",
+        "method": "GET",
+        "auth": true
+      },
+      "request": {
+        "id": "${USER_ID}"
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "post/api/oss/group/join",
+      "description": "加入群组",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/group/join",
+        "method": "POST",
+        "auth": true
+      },
+      "request": {
+        "invite_code": "test_61ia0"
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "post/api/oss/group/member/role/{id}",
+      "description": "更新成员角色",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/group/member/role/{id}",
+        "method": "POST",
+        "auth": true
+      },
+      "request": {
+        "id": "${USER_ID}",
+        "role": "test_55f5u",
+        "user_id": "test_3zlex"
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "post/api/oss/project/create",
+      "description": "创建项目",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/project/create",
+        "method": "POST",
+        "auth": true
+      },
+      "request": {
+        "description": "test_lyqb6",
+        "group_id": "test_cykpc",
+        "name": "test_2tngg8f4"
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      },
+      "store": {
+        "post/api/oss/project/id": "data.id"
+      }
+    },
+    {
+      "name": "get/api/oss/role/detail/{id}",
+      "description": "获取角色详情",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/role/detail/{id}",
+        "method": "GET",
+        "auth": true
+      },
+      "request": {
+        "id": "${USER_ID}"
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "get/api/oss/role/list",
+      "description": "获取角色列表",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/role/list",
+        "method": "GET",
+        "auth": true
+      },
+      "request": {},
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "post/api/oss/file/folder",
+      "description": "创建文件夹",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/file/folder",
+        "method": "POST",
+        "auth": true
+      },
+      "request": {
+        "folder_name": "test_kknifv0k",
+        "path": "test_vn262",
+        "project_id": "test_9g9k2"
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "post/api/oss/file/share",
+      "description": "创建文件分享",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/file/share",
+        "method": "POST",
+        "auth": true
+      },
+      "request": {
+        "download_limit": 72,
+        "expire_hours": 9,
+        "file_id": "test_uyyho",
+        "password": "Password123!urbw"
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "post/api/oss/group/invite",
+      "description": "生成邀请码",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/group/invite",
+        "method": "POST",
+        "auth": true
+      },
+      "request": {
+        "expire_days": 52,
+        "group_id": "test_ckwuu"
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "get/api/oss/project/list",
+      "description": "列出项目",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/project/list",
+        "method": "GET",
+        "auth": true
+      },
+      "request": {},
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "post/api/oss/role/update",
+      "description": "更新角色",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/role/update",
+        "method": "POST",
+        "auth": true
+      },
+      "request": {
+        "code": "test_axuox",
+        "description": "test_av3dd",
+        "id": 88,
+        "name": "test_b4xojguv",
+        "status": 54
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "post/api/oss/share/download",
+      "description": "下载分享文件",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/share/download",
+        "method": "POST",
+        "auth": true
+      },
+      "request": {
+        "password": "Password123!0fig",
+        "share_code": "test_y2d14"
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "get/api/oss/file/delete/{id}",
+      "description": "删除文件",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/file/delete/{id}",
+        "method": "GET",
+        "auth": true
+      },
+      "request": {
+        "id": "${USER_ID}"
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "get/api/oss/group/detail/{id}",
+      "description": "获取群组详情",
+      "skip": false,
+      "depends_on": [
+        "post_api_oss_user_login"
+      ],
+      "api": {
+        "endpoint": "/api/oss/group/detail/{id}",
+        "method": "GET",
+        "auth": true
+      },
+      "request": {
+        "id": "${USER_ID}"
+      },
       "expect": {
         "status_code": 200,
         "json": {
@@ -298,4 +1002,4 @@
       }
     }
   ]
-} 
+}

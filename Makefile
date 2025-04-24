@@ -1,4 +1,4 @@
-.PHONY: build run dev clean docker-build docker-compose init-db create-db swagger docs api-docs all-docs
+.PHONY: build run dev clean docker-build docker-compose init-db create-db swagger docs api-docs all-docs test test-build test-generate test-run
 
 # 默认目标
 all: build
@@ -89,6 +89,40 @@ else
 endif
 	@echo "文档服务器已启动，请访问: http://localhost:8090"
 
+# 构建测试工具
+test-build:
+	@echo "构建测试工具..."
+ifeq ($(OS),Windows_NT)
+	@cd test && go build -o oss_tester.exe
+	@echo "测试工具构建完成: test/oss_tester.exe"
+else
+	@cd test && go build -o oss_tester
+	@echo "测试工具构建完成: test/oss_tester"
+endif
+
+# 生成测试配置
+test-generate: swagger test-build
+	@echo "从Swagger文档生成测试配置..."
+ifeq ($(OS),Windows_NT)
+	@cd test && .\oss_tester.exe -swagger ..\docs\swagger\swagger.json -output test_config.json
+else
+	@cd test && ./oss_tester -swagger ../docs/swagger/swagger.json -output test_config.json
+endif
+	@echo "测试配置已生成: test/test_config.json"
+
+# 运行测试
+test-run: test-build
+	@echo "运行自动化测试..."
+ifeq ($(OS),Windows_NT)
+	@cd test && .\oss_tester.exe -swagger ..\docs\swagger\swagger.json -run
+else
+	@cd test && ./oss_tester -swagger ../docs/swagger/swagger.json -run
+endif
+
+# 一键完成测试流程：生成文档、构建测试工具、生成测试配置、运行测试
+test: swagger test-build test-generate test-run
+	@echo "测试流程已完成"
+
 # 帮助信息
 help:
 	@echo "可用命令:"
@@ -109,4 +143,8 @@ help:
 	@echo "  make api-docs       - 生成API文档（包含Swagger）"
 	@echo "  make code-docs      - 生成代码文档并启动godoc服务器"
 	@echo "  make all-docs       - 生成所有文档"
-	@echo "  make serve-docs     - 启动文档Web服务器" 
+	@echo "  make serve-docs     - 启动文档Web服务器"
+	@echo "  make test-build     - 构建测试工具"
+	@echo "  make test-generate  - 生成测试配置"
+	@echo "  make test-run       - 运行自动化测试"
+	@echo "  make test           - 一键执行完整测试流程" 
