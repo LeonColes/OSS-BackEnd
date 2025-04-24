@@ -1,0 +1,301 @@
+{
+  "base_url": "http://localhost:8080/api/oss",
+  "test_cases": [
+    {
+      "name": "register_user",
+      "description": "测试用户注册功能",
+      "skip": false,
+      "api": {
+        "endpoint": "/user/register",
+        "method": "POST",
+        "auth": false
+      },
+      "request": {
+        "username": "{{USERNAME}}",
+        "password": "Password123!",
+        "email": "{{EMAIL}}",
+        "name": "自动化测试用户",
+        "phone": "{{PHONE}}"
+      },
+      "expect": {
+        "status_code": 200,
+        "contains": ["success"],
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "login_user",
+      "description": "测试用户登录功能",
+      "skip": false,
+      "depends_on": ["register_user"],
+      "api": {
+        "endpoint": "/user/login",
+        "method": "POST",
+        "auth": false
+      },
+      "request": {
+        "username": "{{USERNAME}}",
+        "password": "Password123!",
+        "email": "{{EMAIL}}"
+      },
+      "expect": {
+        "status_code": 200,
+        "contains": ["success"],
+        "json": {
+          "code": 200
+        }
+      },
+      "store": {
+        "token": "data.token",
+        "user_id": "data.user_info.id"
+      }
+    },
+    {
+      "name": "get_user_info",
+      "description": "获取用户信息",
+      "skip": false,
+      "depends_on": ["login_user"],
+      "api": {
+        "endpoint": "/user/info",
+        "method": "GET",
+        "auth": true
+      },
+      "request": {},
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200,
+          "data.email": "{{EMAIL}}"
+        }
+      }
+    },
+    {
+      "name": "create_group",
+      "description": "创建群组",
+      "skip": false,
+      "depends_on": ["login_user"],
+      "api": {
+        "endpoint": "/group/create",
+        "method": "POST",
+        "auth": true
+      },
+      "request": {
+        "name": "测试群组-自动化-{{USERNAME}}",
+        "description": "这是一个自动化测试创建的群组",
+        "group_key": "{{GROUPKEY}}"
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "get_user_groups",
+      "description": "获取用户群组列表",
+      "skip": false,
+      "depends_on": ["create_group"],
+      "api": {
+        "endpoint": "/group/user",
+        "method": "GET",
+        "auth": true
+      },
+      "request": {},
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        },
+        "contains": ["测试群组-自动化-{{USERNAME}}"]
+      },
+      "store": {
+        "group_id": "data.0.id"
+      }
+    },
+    {
+      "name": "create_project",
+      "description": "创建项目",
+      "skip": false,
+      "depends_on": ["create_group", "get_user_groups"],
+      "api": {
+        "endpoint": "/project/create",
+        "method": "POST",
+        "auth": true
+      },
+      "request": {
+        "name": "测试项目-自动化-{{USERNAME}}",
+        "description": "这是一个自动化测试创建的项目",
+        "group_id": "${group_id}"
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      },
+      "store": {
+        "project_id": "data.id"
+      }
+    },
+    {
+      "name": "get_user_projects",
+      "description": "获取用户项目列表",
+      "skip": false,
+      "depends_on": ["create_project"],
+      "api": {
+        "endpoint": "/project/user",
+        "method": "GET",
+        "auth": true
+      },
+      "request": {},
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        },
+        "contains": ["测试项目-自动化-{{USERNAME}}"]
+      }
+    },
+    {
+      "name": "create_folder",
+      "description": "创建文件夹",
+      "skip": false,
+      "depends_on": ["create_project"],
+      "api": {
+        "endpoint": "/file/folder",
+        "method": "POST",
+        "auth": true
+      },
+      "request": {
+        "project_id": "${project_id}",
+        "path": "/",
+        "folder_name": "测试目录-{{USERNAME}}"
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200,
+          "data.is_folder": true
+        }
+      }
+    },
+    {
+      "name": "upload_file",
+      "description": "上传文件测试",
+      "skip": false,
+      "depends_on": ["create_project"],
+      "api": {
+        "endpoint": "/file/upload",
+        "method": "POST",
+        "auth": true
+      },
+      "request": {
+        "project_id": "${project_id}",
+        "path": "/",
+        "comment": "自动化测试上传的文件-{{USERNAME}}",
+        "overwrite": true
+      },
+      "file_upload": {
+        "field_name": "file",
+        "file_name": "test_file.txt",
+        "file_path": "test_file.txt"
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      },
+      "store": {
+        "file_id": "data.id"
+      }
+    },
+    {
+      "name": "list_files",
+      "description": "列出项目文件",
+      "skip": false,
+      "depends_on": ["upload_file", "create_folder"],
+      "api": {
+        "endpoint": "/file/list",
+        "method": "GET",
+        "auth": true
+      },
+      "request": {
+        "project_id": "${project_id}",
+        "path": "/"
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        },
+        "contains": ["test_file.txt", "测试目录-{{USERNAME}}"]
+      }
+    },
+    {
+      "name": "delete_file",
+      "description": "删除文件",
+      "skip": false,
+      "depends_on": ["upload_file"],
+      "api": {
+        "endpoint": "/file/delete/${file_id}",
+        "method": "GET",
+        "auth": true
+      },
+      "request": {},
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "name": "create_share",
+      "description": "创建文件分享",
+      "skip": false,
+      "depends_on": ["upload_file"],
+      "api": {
+        "endpoint": "/file/share",
+        "method": "POST",
+        "auth": true
+      },
+      "request": {
+        "file_id": "${file_id}",
+        "password": "123456",
+        "expire_hours": 24,
+        "download_limit": 5
+      },
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      },
+      "store": {
+        "share_code": "data.share_code"
+      }
+    },
+    {
+      "name": "get_share_info",
+      "description": "获取分享信息",
+      "skip": false,
+      "depends_on": ["create_share"],
+      "api": {
+        "endpoint": "/share/${share_code}",
+        "method": "GET",
+        "auth": false
+      },
+      "request": {},
+      "expect": {
+        "status_code": 200,
+        "json": {
+          "code": 200
+        }
+      }
+    }
+  ]
+} 
