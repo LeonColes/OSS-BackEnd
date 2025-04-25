@@ -59,12 +59,12 @@ make dev
 
 没有安装Make:
 ```bash
-go run cmd/server/main.go
+go run main.go
 ```
 
 **Windows环境:**
 ```bash
-go run cmd/server/main.go
+go run main.go
 ```
 
 4. 访问API:
@@ -92,8 +92,8 @@ API服务默认运行在 `http://localhost:8080`
 - `make help` - 显示所有可用命令
 
 **Windows环境替代命令:**
-- 构建应用: `go build -o bin/oss-backend.exe cmd/server/main.go`
-- 运行应用: `go run cmd/server/main.go`
+- 构建应用: `go build -o bin/oss-backend.exe main.go`
+- 运行应用: `go run main.go`
 - 启动依赖: `docker-compose up -d mysql redis minio`
 - 停止依赖: `docker-compose down`
 
@@ -189,12 +189,12 @@ docker-compose logs -f oss-backend
 
 **Linux/Mac:**
 ```bash
-go build -o bin/oss-backend cmd/server/main.go
+go build -o bin/oss-backend main.go
 ```
 
 **Windows:**
 ```bash
-go build -o bin\oss-backend.exe cmd\server\main.go
+go build -o bin\oss-backend.exe main.go
 ```
 
 2. 将二进制文件和配置文件复制到服务器:
