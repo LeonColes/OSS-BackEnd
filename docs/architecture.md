@@ -5,93 +5,96 @@
 ## 系统架构图
 
 ```mermaid
-graph TD
-    User[用户] --> WebUI[Web界面]
-    User --> MobileApp[移动应用]
-    User --> CLI[命令行工具]
-    
-    subgraph "用户操作层"
-      WebUI
-      MobileApp
-      CLI
+flowchart TD
+    %% 定义主要层级
+    subgraph 用户操作层
+        direction LR
+        WebUI[Web界面]
+        MobileApp[移动应用]
+        CLI[命令行工具]
     end
     
-    WebUI --> Gateway[API网关/负载均衡]
-    MobileApp --> Gateway
-    CLI --> Gateway
-    
-    Gateway --> Monitor[监控系统\nPrometheus]
-    Gateway --> Logger[日志系统\nELK/Loki]
-    
-    subgraph "OSS-Backend服务"
-      Gateway --> UserSrv[用户服务]
-      Gateway --> AuthSrv[权限服务]
-      Gateway --> StorageSrv[存储服务]
-      Gateway --> TaskSrv[任务服务]
-      
-      UserSrv --> UserMgt[用户管理]
-      AuthSrv --> RBAC[RBAC权限\nCasbin]
-      StorageSrv --> FileMgt[文件管理]
-      TaskSrv --> TaskScheduler[任务调度]
+    subgraph 网关层
+        direction LR
+        Gateway["API网关\n(负载均衡)"]
+        Monitor["监控系统\nPrometheus"]
+        Logger["日志系统\nELK/Loki"]
     end
     
-    subgraph "中间件层"
-      UserMgt --> Redis[Redis缓存]
-      RBAC --> Redis
-      FileMgt --> Redis
-      TaskScheduler --> Redis
-      
-      UserMgt --> MsgQueue[消息队列\nKafka/NATS]
-      RBAC --> MsgQueue
-      FileMgt --> MsgQueue
-      TaskScheduler --> MsgQueue
-      
-      UserMgt --> Discovery[服务发现\nConsul/etcd]
-      RBAC --> Discovery
-      FileMgt --> Discovery
-      TaskScheduler --> Discovery
+    subgraph OSS服务层["OSS-Backend 服务"]
+        direction LR
+        subgraph Services
+            direction LR
+            UserSrv[用户服务]
+            AuthSrv[权限服务]
+            StorageSrv[存储服务]
+            TaskSrv[任务服务]
+        end
+        
+        subgraph Modules
+            direction LR
+            UserMgt[用户管理]
+            RBAC["RBAC权限\n(Casbin)"]
+            FileMgt[文件管理]
+            TaskScheduler[任务调度]
+        end
     end
     
-    subgraph "存储层"
-      Redis --> DB[MySQL/PG\n元数据存储]
-      MsgQueue --> DB
-      Discovery --> DB
-      
-      Redis --> ObjectStore[MinIO\n对象存储]
-      MsgQueue --> ObjectStore
-      Discovery --> ObjectStore
+    subgraph 中间件层
+        direction LR
+        Redis[Redis缓存]
+        MsgQueue["消息队列\nKafka/NATS"]
+        Discovery["服务发现\nConsul/etcd"]
     end
     
-    style User fill:#f9f9f9,stroke:#333,stroke-width:2px
-    style WebUI fill:#d0e0ff,stroke:#333,stroke-width:1px
-    style MobileApp fill:#d0e0ff,stroke:#333,stroke-width:1px
-    style CLI fill:#d0e0ff,stroke:#333,stroke-width:1px
+    subgraph 存储层
+        direction LR
+        DB["MySQL\n元数据存储"]
+        ObjectStore["MinIO\n对象存储"]
+    end
     
-    style Gateway fill:#ffe0b2,stroke:#333,stroke-width:1px
-    style Monitor fill:#ffccbc,stroke:#333,stroke-width:1px
-    style Logger fill:#ffccbc,stroke:#333,stroke-width:1px
+    %% 连接各层组件
+    用户操作层 --> Gateway
     
-    style UserSrv fill:#c8e6c9,stroke:#333,stroke-width:1px
-    style AuthSrv fill:#c8e6c9,stroke:#333,stroke-width:1px
-    style StorageSrv fill:#c8e6c9,stroke:#333,stroke-width:1px
-    style TaskSrv fill:#c8e6c9,stroke:#333,stroke-width:1px
+    Gateway --> Monitor
+    Gateway --> Logger
+    Gateway --> Services
     
-    style UserMgt fill:#b3e5fc,stroke:#333,stroke-width:1px
-    style RBAC fill:#b3e5fc,stroke:#333,stroke-width:1px
-    style FileMgt fill:#b3e5fc,stroke:#333,stroke-width:1px
-    style TaskScheduler fill:#b3e5fc,stroke:#333,stroke-width:1px
+    UserSrv --> UserMgt
+    AuthSrv --> RBAC
+    StorageSrv --> FileMgt
+    TaskSrv --> TaskScheduler
     
-    style Redis fill:#e1bee7,stroke:#333,stroke-width:1px
-    style MsgQueue fill:#e1bee7,stroke:#333,stroke-width:1px
-    style Discovery fill:#e1bee7,stroke:#333,stroke-width:1px
+    UserMgt & RBAC & FileMgt & TaskScheduler --> 中间件层
     
-    style DB fill:#bbdefb,stroke:#333,stroke-width:1px
-    style ObjectStore fill:#bbdefb,stroke:#333,stroke-width:1px
+    中间件层 --> 存储层
+    
+    %% 样式设置 - 使用更明亮的配色
+    classDef userLayer fill:#f0f8ff,stroke:#4682b4,stroke-width:2px,color:#333
+    classDef gatewayLayer fill:#f0fff0,stroke:#3cb371,stroke-width:2px,color:#333
+    classDef serviceLayer fill:#fff0f5,stroke:#db7093,stroke-width:2px,color:#333
+    classDef middlewareLayer fill:#fff8dc,stroke:#daa520,stroke-width:2px,color:#333
+    classDef storageLayer fill:#f5f5f5,stroke:#708090,stroke-width:2px,color:#333
+    
+    class WebUI,MobileApp,CLI userLayer
+    class Gateway,Monitor,Logger gatewayLayer
+    class UserSrv,AuthSrv,StorageSrv,TaskSrv,UserMgt,RBAC,FileMgt,TaskScheduler serviceLayer
+    class Redis,MsgQueue,Discovery middlewareLayer
+    class DB,ObjectStore storageLayer
+    
+    %% 设置子图样式 - 明亮背景
+    style 用户操作层 fill:#f8f9fa,stroke:#4682b4,stroke-width:2px,color:#333
+    style 网关层 fill:#f8f9fa,stroke:#3cb371,stroke-width:2px,color:#333
+    style OSS服务层 fill:#f8f9fa,stroke:#db7093,stroke-width:2px,color:#333
+    style 中间件层 fill:#f8f9fa,stroke:#daa520,stroke-width:2px,color:#333
+    style 存储层 fill:#f8f9fa,stroke:#708090,stroke-width:2px,color:#333
+    style Services fill:none,stroke:none
+    style Modules fill:none,stroke:none
 ```
 
 </div>
 
-> **系统架构总览**: OSS-Backend是一个完整的对象存储服务，采用微服务架构，提供高性能、安全可靠的文件存储与管理功能
+> **系统架构总览**: OSS-Backend是一个基于Go语言的对象存储服务，采用微服务架构，提供高性能、安全可靠的文件存储与管理功能
 
 ## 📋 目录
 
@@ -120,7 +123,7 @@ graph TD
 | **API网关层** | 统一入口，请求路由 | 负载均衡、认证鉴权组件 |
 | **服务层** | 核心业务逻辑实现 | 用户服务、权限服务、存储服务、任务服务 |
 | **中间件层** | 提供基础设施支持 | Redis缓存、消息队列、服务发现 |
-| **存储层** | 负责数据持久化 | 元数据存储(MySQL/PG)、对象存储(MinIO) |
+| **存储层** | 负责数据持久化 | 元数据存储(MySQL)、对象存储(MinIO) |
 
 ### 🔄 用户操作流程
 
@@ -208,37 +211,58 @@ sequenceDiagram
 <div align="center">
 
 ```mermaid
-classDiagram
-    class InterfaceLayer {
-        HTTP API
-        gRPC
-        WebSocket
-        GraphQL
-    }
+flowchart TD
+    subgraph InterfaceLayer[接口层]
+        direction LR
+        HTTP[HTTP API]
+        gRPC[gRPC]
+        WS[WebSocket]
+        GraphQL[GraphQL]
+    end
     
-    class ApplicationLayer {
-        服务编排
-        用例实现
-        事务管理
-    }
+    subgraph ApplicationLayer[应用层]
+        direction LR
+        ServiceComposition[服务编排]
+        UseCases[用例实现]
+        TransactionMgmt[事务管理]
+    end
     
-    class DomainLayer {
-        业务实体
-        值对象
-        领域服务
-        聚合
-    }
+    subgraph DomainLayer[领域层]
+        direction LR
+        Entities[业务实体]
+        ValueObjects[值对象]
+        DomainServices[领域服务]
+        Aggregates[聚合]
+    end
     
-    class InfrastructureLayer {
-        数据库访问
-        第三方集成
-        消息队列
-        缓存等
-    }
+    subgraph InfraLayer[基础设施层]
+        direction LR
+        DBAccess[数据库访问]
+        ThirdPartyInteg[第三方集成]
+        MsgQueues[消息队列]
+        Cache[缓存]
+    end
     
     InterfaceLayer --> ApplicationLayer
     ApplicationLayer --> DomainLayer
-    DomainLayer --> InfrastructureLayer
+    DomainLayer --> InfraLayer
+    
+    %% 样式设置 - 明亮风格
+    classDef interfaceStyle fill:#e3f2fd,stroke:#1976d2,stroke-width:2px,color:#333
+    classDef appStyle fill:#e8f5e9,stroke:#43a047,stroke-width:2px,color:#333
+    classDef domainStyle fill:#fff3e0,stroke:#ff9800,stroke-width:2px,color:#333
+    classDef infraStyle fill:#fce4ec,stroke:#e91e63,stroke-width:2px,color:#333
+    
+    class HTTP,gRPC,WS,GraphQL interfaceStyle
+    class ServiceComposition,UseCases,TransactionMgmt appStyle
+    class Entities,ValueObjects,DomainServices,Aggregates domainStyle
+    class DBAccess,ThirdPartyInteg,MsgQueues,Cache infraStyle
+    
+    %% 设置子图样式
+    style InterfaceLayer fill:#f8f9fa,stroke:#1976d2,stroke-width:2px,color:#333
+    style ApplicationLayer fill:#f8f9fa,stroke:#43a047,stroke-width:2px,color:#333
+    style DomainLayer fill:#f8f9fa,stroke:#ff9800,stroke-width:2px,color:#333
+    style InfraLayer fill:#f8f9fa,stroke:#e91e63,stroke-width:2px,color:#333
 ```
 
 </div>
@@ -246,7 +270,29 @@ classDiagram
 ### 🏢 核心服务组件
 
 <div align="center">
-<img src="https://via.placeholder.com/800x400.png?text=OSS-Backend+核心服务组件" alt="核心服务组件" style="max-width:80%;">
+
+```mermaid
+flowchart TD
+    subgraph CoreComponents[核心服务组件]
+        direction LR
+        APIGateway[API网关]
+        UserService[用户服务]
+        AuthService[权限服务]
+        StorageService[存储服务]
+        TaskService[任务调度服务]
+        NotificationService[通知服务]
+        MonitoringService[监控服务]
+    end
+    
+    %% 样式设置 - 明亮风格
+    classDef componentStyle fill:#e1f5fe,stroke:#0288d1,stroke-width:2px,color:#333
+    
+    class APIGateway,UserService,AuthService,StorageService,TaskService,NotificationService,MonitoringService componentStyle
+    
+    %% 设置子图样式
+    style CoreComponents fill:#f8f9fa,stroke:#0288d1,stroke-width:2px,color:#333
+```
+
 </div>
 
 - **🌐 API网关**: 统一入口，请求路由，认证鉴权
@@ -281,9 +327,9 @@ classDiagram
     <td>轻量、高性能的HTTP Web框架</td>
   </tr>
   <tr>
-    <td>RPC框架</td>
-    <td><strong>gRPC</strong></td>
-    <td>高性能、跨语言的RPC框架</td>
+    <td>ORM框架</td>
+    <td><strong>GORM</strong></td>
+    <td>功能丰富的Golang ORM库</td>
   </tr>
   <tr>
     <td>API文档</td>
@@ -295,25 +341,25 @@ classDiagram
 
 ### 💾 存储层
 
-- **关系型数据库**: PostgreSQL (元数据存储)
+- **关系型数据库**: MySQL 8.0+ (元数据存储)
 - **对象存储**: MinIO (文件数据存储)
 - **缓存**: Redis
-- **搜索引擎**: Elasticsearch (可选)
+- **搜索引擎**: Elasticsearch (可选，待实现)
 
 ### 🔧 中间件与基础设施
 
-- **消息队列**: Kafka/NATS
-- **服务发现**: Consul/etcd
-- **日志收集**: ELK/Loki
-- **监控系统**: Prometheus + Grafana
-- **链路追踪**: Jaeger/Zipkin
+- **消息队列**: Kafka/NATS (待实现)
+- **服务发现**: Consul/etcd (待实现)
+- **日志收集**: ELK/Loki (待实现)
+- **监控系统**: Prometheus + Grafana (待实现)
+- **链路追踪**: Jaeger/Zipkin (待实现)
 
 ### 🚢 部署与运维
 
 - **容器化**: Docker
-- **编排系统**: Kubernetes
-- **CI/CD**: GitHub Actions/Jenkins
-- **配置管理**: Helm
+- **编排系统**: Docker Compose (Kubernetes待实现)
+- **CI/CD**: GitHub Actions
+- **配置管理**: 配置文件 + 环境变量
 
 ---
 
@@ -325,44 +371,54 @@ classDiagram
 
 ```mermaid
 flowchart LR
-    UI[用户接口] --> AS[用户应用服务]
-    AS --> DM[用户领域]
-    AS --> UR[用户资源库]
-    DM --> UR
-    UR <--> US[用户存储]
+    subgraph UserModule[用户管理模块]
+        direction LR
+        UI[用户接口] --> AS[用户应用服务]
+        AS --> DM[用户领域]
+        AS --> UR[用户资源库]
+        DM --> UR
+        UR <--> US[用户存储]
+    end
     
-    style UI fill:#f9f0ff,stroke:#333,stroke-width:1px
-    style AS fill:#e0f7fa,stroke:#333,stroke-width:1px
-    style DM fill:#e8f5e9,stroke:#333,stroke-width:1px
-    style UR fill:#fff3e0,stroke:#333,stroke-width:1px
-    style US fill:#f3e5f5,stroke:#333,stroke-width:1px
+    %% 样式设置 - 明亮风格
+    classDef userModuleStyle fill:#e3f2fd,stroke:#1976d2,stroke-width:2px,color:#333
+    
+    class UI,AS,DM,UR,US userModuleStyle
+    
+    %% 设置子图样式
+    style UserModule fill:#f8f9fa,stroke:#1976d2,stroke-width:2px,color:#333
 ```
 
 </div>
 
 提供用户注册、登录、个人信息管理、认证等功能，包括：
 
-- 多种认证方式支持（账密、OAuth、LDAP等）
+- JWT令牌认证
 - 用户信息管理
-- 安全设置与MFA
 - 用户组管理
+- 权限分配
 
 ### 🔑 权限管理模块
 
 <div align="center">
 
 ```mermaid
-graph TD
-    User[用户] --> Role[角色]
-    Group[用户组] --> Role
-    Role --> Permission[权限]
-    Permission --> Resource[资源]
+flowchart TD
+    subgraph PermissionModule[权限管理模块]
+        direction LR
+        User[用户] --> Role[角色]
+        Group[用户组] --> Role
+        Role --> Permission[权限]
+        Permission --> Resource[资源]
+    end
     
-    style User fill:#bbdefb,stroke:#333,stroke-width:1px
-    style Group fill:#bbdefb,stroke:#333,stroke-width:1px
-    style Role fill:#c8e6c9,stroke:#333,stroke-width:1px
-    style Permission fill:#ffe0b2,stroke:#333,stroke-width:1px
-    style Resource fill:#ffccbc,stroke:#333,stroke-width:1px
+    %% 样式设置 - 明亮风格
+    classDef permModuleStyle fill:#e8f5e9,stroke:#43a047,stroke-width:2px,color:#333
+    
+    class User,Group,Role,Permission,Resource permModuleStyle
+    
+    %% 设置子图样式
+    style PermissionModule fill:#f8f9fa,stroke:#43a047,stroke-width:2px,color:#333
 ```
 
 </div>
@@ -373,7 +429,6 @@ graph TD
 - 权限分配与继承
 - 资源ACL控制
 - API级别权限验证
-- 数据行级权限控制
 
 ### 💾 文件存储模块
 
@@ -381,28 +436,31 @@ graph TD
 
 ```mermaid
 flowchart LR
-    FI[文件操作接口] --> FS[文件应用服务]
-    FS --> FD[文件领域]
-    FD --> FM[文件元数据存储]
-    FD --> FDS[文件数据存储]
+    subgraph StorageModule[文件存储模块]
+        direction LR
+        FI[文件操作接口] --> FS[文件应用服务]
+        FS --> FD[文件领域]
+        FD --> FM[文件元数据存储]
+        FD --> FDS[文件数据存储]
+    end
     
-    style FI fill:#f9f0ff,stroke:#333,stroke-width:1px
-    style FS fill:#e0f7fa,stroke:#333,stroke-width:1px
-    style FD fill:#e8f5e9,stroke:#333,stroke-width:1px
-    style FM fill:#fff3e0,stroke:#333,stroke-width:1px
-    style FDS fill:#f3e5f5,stroke:#333,stroke-width:1px
+    %% 样式设置 - 明亮风格
+    classDef storageModuleStyle fill:#fff3e0,stroke:#ff9800,stroke-width:2px,color:#333
+    
+    class FI,FS,FD,FM,FDS storageModuleStyle
+    
+    %% 设置子图样式
+    style StorageModule fill:#f8f9fa,stroke:#ff9800,stroke-width:2px,color:#333
 ```
 
 </div>
 
 负责文件的上传、下载和管理：
 
-- 大文件分片上传
-- 断点续传
+- 文件上传与存储
 - 文件版本控制
 - 元数据管理
-- 文件加密存储
-- 数据去重
+- 秒传功能
 
 ### ⏱️ 任务调度模块
 
@@ -411,8 +469,6 @@ flowchart LR
 - 文件处理（压缩、格式转换等）
 - 批量操作
 - 定时任务
-- 重试机制
-- 分布式作业调度
 
 ---
 
@@ -456,7 +512,7 @@ erDiagram
 
 </div>
 
-使用PostgreSQL存储系统元数据：
+使用MySQL存储系统元数据：
 
 - 用户信息
 - 权限配置
@@ -466,15 +522,32 @@ erDiagram
 ### 📁 文件数据存储
 
 <div align="center">
-<img src="https://via.placeholder.com/800x300.png?text=MinIO对象存储架构" alt="MinIO对象存储架构" style="max-width:80%;">
+
+```mermaid
+flowchart LR
+    subgraph MinIOStorage[MinIO对象存储]
+        direction LR
+        Buckets[存储桶管理] --- Objects[对象管理]
+        Objects --- Versions[版本控制]
+        Versions --- Encryption[加密存储]
+    end
+    
+    %% 样式设置 - 明亮风格
+    classDef minioStyle fill:#e8eaf6,stroke:#3f51b5,stroke-width:2px,color:#333
+    
+    class Buckets,Objects,Versions,Encryption minioStyle
+    
+    %% 设置子图样式
+    style MinIOStorage fill:#f8f9fa,stroke:#3f51b5,stroke-width:2px,color:#333
+```
+
 </div>
 
 使用MinIO作为对象存储后端：
 
-- 按租户隔离存储桶
-- 分层存储策略
-- 内容寻址存储
-- 加密存储支持
+- 按项目划分存储桶
+- 版本控制支持
+- 文件内容去重
 
 ---
 
@@ -507,15 +580,38 @@ sequenceDiagram
 
 </div>
 
-1. **多因素认证**: 支持密码、令牌、证书等多种认证方式
-2. **JWT令牌**: 无状态会话管理
-3. **OAuth集成**: 支持第三方登录
+1. **基于JWT的认证**: 使用JSON Web Token进行无状态身份验证
+2. **令牌刷新**: 支持访问令牌和刷新令牌双令牌机制
+3. **登录安全**: 密码哈希存储，防止暴力破解
 4. **会话管理**: 登录状态控制与安全退出
 
 ### 🔒 授权模型
 
-<div class="authorization-model">
-<pre>
+<div align="center">
+
+```mermaid
+flowchart LR
+    subgraph CasbinModel[Casbin授权模型]
+        Request[请求定义] --- Policy[策略定义]
+        Policy --- Role[角色定义]
+        Role --- Effect[策略效果]
+        Effect --- Matcher[匹配器]
+    end
+    
+    %% 样式设置 - 明亮风格
+    classDef casbinStyle fill:#e0f7fa,stroke:#00acc1,stroke-width:2px,color:#333
+    
+    class Request,Policy,Role,Effect,Matcher casbinStyle
+    
+    %% 设置子图样式
+    style CasbinModel fill:#f8f9fa,stroke:#00acc1,stroke-width:2px,color:#333
+```
+
+</div>
+
+Casbin策略配置:
+
+```
 [request_definition]
 r = sub, obj, act
 
@@ -530,8 +626,7 @@ e = some(where (p.eft == allow))
 
 [matchers]
 m = g(r.sub, p.sub) && r.obj == p.obj && r.act == p.act
-</pre>
-</div>
+```
 
 ---
 
@@ -543,41 +638,48 @@ m = g(r.sub, p.sub) && r.obj == p.obj && r.act == p.act
 
 ```mermaid
 flowchart TD
-    OSS[OSS-Backend] --> DB[(PostgreSQL/Redis)]
-    DB --> MinIO[(MinIO)]
+    subgraph SingleDeployment[单体部署架构]
+        direction LR
+        OSS[OSS-Backend] --> DB[(MySQL/Redis)]
+        DB --> MinIO[(MinIO)]
+    end
     
-    style OSS fill:#bbdefb,stroke:#333,stroke-width:2px
-    style DB fill:#c8e6c9,stroke:#333,stroke-width:1px
-    style MinIO fill:#ffe0b2,stroke:#333,stroke-width:1px
+    %% 样式设置 - 明亮风格
+    classDef singleDepStyle fill:#f1f8e9,stroke:#7cb342,stroke-width:2px,color:#333
+    
+    class OSS,DB,MinIO singleDepStyle
+    
+    %% 设置子图样式
+    style SingleDeployment fill:#f8f9fa,stroke:#7cb342,stroke-width:2px,color:#333
 ```
 
 </div>
 
-### 🌐 微服务部署
+### 🌐 微服务部署 (未来规划)
 
 <div align="center">
 
 ```mermaid
 flowchart TD
-    API[API Gateway] --> US[用户服务]
-    API --> AS[权限服务]
-    API --> SS[存储服务]
-    API --> TS[任务服务]
+    subgraph MicroserviceDeployment[微服务部署架构]
+        direction LR
+        API[API Gateway] --> US[用户服务]
+        API --> AS[权限服务]
+        API --> SS[存储服务]
+        API --> TS[任务服务]
+        
+        US & AS & SS & TS --> DB[(Shared DB/Cache)]
+        
+        DB --> OS[(Object Storage)]
+    end
     
-    US --> DB[(Shared DB/Cache)]
-    AS --> DB
-    SS --> DB
-    TS --> DB
+    %% 样式设置 - 明亮风格
+    classDef microDepStyle fill:#ffebee,stroke:#d32f2f,stroke-width:2px,color:#333
     
-    DB --> OS[(Object Storage)]
+    class API,US,AS,SS,TS,DB,OS microDepStyle
     
-    style API fill:#bbdefb,stroke:#333,stroke-width:2px
-    style US fill:#c8e6c9,stroke:#333,stroke-width:1px
-    style AS fill:#c8e6c9,stroke:#333,stroke-width:1px
-    style SS fill:#c8e6c9,stroke:#333,stroke-width:1px
-    style TS fill:#c8e6c9,stroke:#333,stroke-width:1px
-    style DB fill:#ffe0b2,stroke:#333,stroke-width:1px
-    style OS fill:#ffccbc,stroke:#333,stroke-width:1px
+    %% 设置子图样式
+    style MicroserviceDeployment fill:#f8f9fa,stroke:#d32f2f,stroke-width:2px,color:#333
 ```
 
 </div>
@@ -592,23 +694,44 @@ flowchart TD
 <table>
   <tr>
     <td align="center"><h3>📊</h3><strong>连接池管理</strong><br/><small>优化数据库连接</small></td>
-    <td align="center"><h3>⚡</h3><strong>缓存策略</strong><br/><small>多级缓存减少I/O</small></td>
+    <td align="center"><h3>⚡</h3><strong>缓存策略</strong><br/><small>减少数据库查询</small></td>
     <td align="center"><h3>🔄</h3><strong>异步处理</strong><br/><small>非关键流程异步化</small></td>
   </tr>
   <tr>
-    <td align="center"><h3>🚦</h3><strong>限流与降级</strong><br/><small>保护系统稳定性</small></td>
-    <td align="center"><h3>🔥</h3><strong>预热与预取</strong><br/><small>减少冷启动开销</small></td>
-    <td align="center"><h3>📈</h3><strong>监控与调优</strong><br/><small>持续性能优化</small></td>
+    <td align="center"><h3>🚦</h3><strong>服务限流</strong><br/><small>防止资源耗尽</small></td>
+    <td align="center"><h3>📦</h3><strong>文件秒传</strong><br/><small>避免重复上传</small></td>
+    <td align="center"><h3>📈</h3><strong>性能监控</strong><br/><small>关键指标追踪</small></td>
   </tr>
 </table>
 </div>
 
 ### 📈 扩展性设计
 
+<div align="center">
+
+```mermaid
+flowchart LR
+    subgraph ScalabilityDesign[扩展性设计]
+        direction LR
+        HS[水平扩展] --- SS[按项目分片]
+        SS --- CP[容量规划]
+        CP --- HI[热点识别]
+    end
+    
+    %% 样式设置 - 明亮风格
+    classDef scalabilityStyle fill:#e8eaf6,stroke:#3f51b5,stroke-width:2px,color:#333
+    
+    class HS,SS,CP,HI scalabilityStyle
+    
+    %% 设置子图样式
+    style ScalabilityDesign fill:#f8f9fa,stroke:#3f51b5,stroke-width:2px,color:#333
+```
+
+</div>
+
 - **水平扩展**: 无状态设计支持集群扩展
-- **分片策略**: 按租户/时间分片数据
-- **容量规划**: 弹性资源分配
-- **热点识别**: 动态调整热点资源
+- **分片策略**: 按项目/用户分片数据
+- **容量规划**: 根据使用量调整资源
 
 ---
 
@@ -617,18 +740,58 @@ flowchart TD
 ### 🔒 数据安全
 
 <div align="center">
-<img src="https://via.placeholder.com/800x300.png?text=OSS-Backend数据安全架构" alt="数据安全架构" style="max-width:80%;">
+
+```mermaid
+flowchart LR
+    subgraph DataSecurity[数据安全]
+        TE["传输加密\nHTTPS"] --- SE[密码哈希存储]
+        SE --- KM[令牌安全管理]
+        KM --- DM[敏感数据加密]
+    end
+    
+    %% 样式设置 - 明亮风格
+    classDef securityStyle fill:#fce4ec,stroke:#e91e63,stroke-width:2px,color:#333
+    
+    class TE,SE,KM,DM securityStyle
+    
+    %% 设置子图样式
+    style DataSecurity fill:#f8f9fa,stroke:#e91e63,stroke-width:2px,color:#333
+```
+
 </div>
 
-- **传输加密**: TLS/SSL通信加密
-- **存储加密**: 文件加密存储
-- **密钥管理**: KMS密钥统一管理
+- **传输加密**: HTTPS通信加密
+- **密码安全**: bcrypt哈希存储
+- **令牌安全**: JWT签名验证
 - **数据脱敏**: 敏感信息脱敏展示
 
 ### 🛡️ 应用安全
 
+<div align="center">
+
+```mermaid
+flowchart LR
+    subgraph AppSecurity[应用安全]
+        direction LR
+        RV[请求验证] --- CSRF[CSRF防护]
+        CSRF --- XSS[XSS防御]
+        XSS --- PC[权限检查]
+        PC --- LA[操作审计]
+    end
+    
+    %% 样式设置 - 明亮风格
+    classDef appSecStyle fill:#f3e5f5,stroke:#9c27b0,stroke-width:2px,color:#333
+    
+    class RV,CSRF,XSS,PC,LA appSecStyle
+    
+    %% 设置子图样式
+    style AppSecurity fill:#f8f9fa,stroke:#9c27b0,stroke-width:2px,color:#333
+```
+
+</div>
+
 - **请求验证**: 输入数据验证
-- **CSRF防护**: 跨站请求伪造防护
+- **CSRF防护**: 跨站请求伪造防护 
 - **XSS防御**: 跨站脚本攻击防御
 - **权限检查**: 多层次权限校验
 - **日志审计**: 关键操作审计追踪
