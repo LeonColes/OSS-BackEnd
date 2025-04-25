@@ -68,7 +68,7 @@ func TestBucketOperations(t *testing.T) {
 
 	// 配置信息（如果需要执行测试，请填写有效的信息）
 	config := pkgminio.Config{
-		Endpoint:  "localhost:9000",
+		Endpoint:  "47.96.113.223:9000",
 		AccessKey: "minioadmin",
 		SecretKey: "minioadmin",
 		UseSSL:    false,
