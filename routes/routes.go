@@ -29,6 +29,7 @@ func SetupRouter(r *gin.Engine, db *gorm.DB, enforcer *casbin.Enforcer, minioCli
 	projectRepo := repository.NewProjectRepository(db)
 	fileRepo := repository.NewFileRepository(db)
 	casbinRepo := repository.NewCasbinRepository(db)
+	statRepo := repository.NewStorageStatRepository(db)
 
 	// 创建JWT中间件
 	jwtMiddleware := middleware.NewJWTAuthMiddleware()
@@ -52,10 +53,10 @@ func SetupRouter(r *gin.Engine, db *gorm.DB, enforcer *casbin.Enforcer, minioCli
 		registerGroupRoutes(apiGroup, userRepo, roleRepo, groupRepo, jwtMiddleware, authMiddleware, authService, minioClient)
 
 		// 注册项目相关路由
-		registerProjectRoutes(apiGroup, projectRepo, groupRepo, userRepo, fileRepo, jwtMiddleware, authMiddleware, authService, db, minioClient)
+		registerProjectRoutes(apiGroup, projectRepo, groupRepo, userRepo, fileRepo, statRepo, jwtMiddleware, authMiddleware, authService, db, minioClient)
 
 		// 注册文件相关路由
-		registerFileRoutes(apiGroup, fileRepo, projectRepo, minioClient, jwtMiddleware, authMiddleware, authService, db)
+		registerFileRoutes(apiGroup, fileRepo, projectRepo, statRepo, minioClient, jwtMiddleware, authMiddleware, authService, db)
 	}
 }
 
@@ -174,6 +175,7 @@ func registerProjectRoutes(
 	groupRepo repository.GroupRepository,
 	userRepo repository.UserRepository,
 	fileRepo repository.FileRepository,
+	statRepo repository.StorageStatRepository,
 	jwtMiddleware *middleware.JWTAuthMiddleware,
 	authMiddleware *middleware.AuthMiddleware,
 	authService service.AuthService,
@@ -185,6 +187,7 @@ func registerProjectRoutes(
 		projectRepo,
 		groupRepo,
 		userRepo,
+		statRepo,
 		authService,
 		db,
 		minioClient,
@@ -224,6 +227,7 @@ func registerFileRoutes(
 	apiGroup *gin.RouterGroup,
 	fileRepo repository.FileRepository,
 	projectRepo repository.ProjectRepository,
+	statRepo repository.StorageStatRepository,
 	minioClient *minio.Client,
 	jwtMiddleware *middleware.JWTAuthMiddleware,
 	authMiddleware *middleware.AuthMiddleware,
@@ -231,7 +235,7 @@ func registerFileRoutes(
 	db *gorm.DB,
 ) {
 	// 创建文件服务
-	fileService := service.NewFileService(fileRepo, projectRepo, minioClient, authService, db)
+	fileService := service.NewFileService(fileRepo, projectRepo, statRepo, minioClient, authService, db)
 
 	// 创建文件控制器
 	fileController := controller.NewFileController(fileService, nil, authService)

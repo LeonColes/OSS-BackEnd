@@ -1,4 +1,4 @@
-.PHONY: build run dev clean mock test unit-test integration-test docker-build docker-compose init-db create-db swagger docs api-docs all-docs test-pkg test-file
+.PHONY: build run dev clean mock test unit-test integration-test docker-build docker-compose init-db create-db swagger docs api-docs all-docs test-pkg test-file api-test
 
 # 默认目标
 all: build
@@ -60,8 +60,19 @@ endif
 	@echo "测试文件: $(FILE)"
 	go test $(FILE) -v -cover
 
+# 运行API测试
+api-test:
+	@echo "运行API测试..."
+ifeq ($(OS),Windows_NT)
+	@powershell -File test/run_api_tests.ps1
+else
+	@chmod +x test/run_api_tests.sh
+	@./test/run_api_tests.sh
+endif
+	@echo "API测试完成。"
+
 # 运行集成测试 (示例，可能需要特定设置)
-integration-test:
+integration-test: api-test
 	@echo "Running integration tests (if any)..."
 
 # 运行所有测试 (单元测试 + 集成测试)
@@ -153,7 +164,8 @@ help:
 	@echo "  make unit-test      - 运行所有单元测试"
 	@echo "  make test-pkg PKG=./path/to/pkg - 测试特定包"
 	@echo "  make test-file FILE=./path/to/test.go - 测试特定文件"
-	@echo "  make integration-test - 运行集成测试 (需要实现)"
+	@echo "  make api-test       - 运行API接口测试"
+	@echo "  make integration-test - 运行集成测试 (包括API测试)"
 	@echo "  make test           - 运行所有测试 (单元 + 集成)"
 	@echo "  make dev-env-up     - 启动开发环境的数据库和服务"
 	@echo "  make dev-env-down   - 停止开发环境"

@@ -26,6 +26,7 @@ type ProjectRepository interface {
 	List(ctx context.Context, req *dto.ProjectListRequest) ([]entity.Project, int64, error)
 	GetByGroupID(ctx context.Context, groupID string) ([]entity.Project, error)
 	GetUserProjects(ctx context.Context, userID string) ([]entity.Project, error)
+	GetAll(ctx context.Context) ([]entity.Project, error)
 
 	// 权限相关
 	CreateProjectMember(ctx context.Context, member *entity.ProjectMember) error
@@ -300,4 +301,11 @@ func (r *projectRepository) WithTx(tx *gorm.DB) ProjectRepository {
 	return &projectRepository{
 		db: tx,
 	}
+}
+
+// GetAll 获取所有项目
+func (r *projectRepository) GetAll(ctx context.Context) ([]entity.Project, error) {
+	var projects []entity.Project
+	err := r.db.WithContext(ctx).Find(&projects).Error
+	return projects, err
 }

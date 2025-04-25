@@ -34,7 +34,7 @@ type ProjectService interface {
 	CreateProject(ctx context.Context, req *dto.CreateProjectRequest, creatorID string) (*dto.ProjectResponse, error)
 	UpdateProject(ctx context.Context, req *dto.UpdateProjectRequest, userID string) (*dto.ProjectResponse, error)
 	GetProjectByID(ctx context.Context, id string, userID string) (*dto.ProjectResponse, error)
-	ListProjects(ctx context.Context, query *dto.ProjectQuery, userID string) ([]*dto.ProjectResponse, int64, error)
+	ListProjects(ctx context.Context, groupID string, userID string, query *dto.ProjectQuery) (*dto.PaginatedProjectResponse, error)
 	GetUserProjects(ctx context.Context, query *dto.ProjectQuery, userID string) ([]*dto.ProjectResponse, int64, error)
 	DeleteProject(ctx context.Context, id string, userID string) error
 
@@ -55,6 +55,7 @@ type projectService struct {
 	projectRepo repository.ProjectRepository
 	groupRepo   repository.GroupRepository
 	userRepo    repository.UserRepository
+	statRepo    repository.StorageStatRepository
 	authService AuthService
 	db          *gorm.DB
 	minioClient *minio.Client
@@ -65,6 +66,7 @@ func NewProjectService(
 	projectRepo repository.ProjectRepository,
 	groupRepo repository.GroupRepository,
 	userRepo repository.UserRepository,
+	statRepo repository.StorageStatRepository,
 	authService AuthService,
 	db *gorm.DB,
 	minioClient *minio.Client,
@@ -73,6 +75,7 @@ func NewProjectService(
 		projectRepo: projectRepo,
 		groupRepo:   groupRepo,
 		userRepo:    userRepo,
+		statRepo:    statRepo,
 		authService: authService,
 		db:          db,
 		minioClient: minioClient,
@@ -341,6 +344,20 @@ func (s *projectService) GetProjectByID(ctx context.Context, id string, userID s
 		return nil, err
 	}
 
+	// 获取存储统计数据
+	var fileCount int64 = 0
+	var totalSize int64 = 0
+
+	// 先尝试从最新的统计记录获取
+	stat, err := s.statRepo.GetLatestByProject(ctx, id)
+	if err == nil && stat != nil {
+		fileCount = stat.FileCount
+		totalSize = stat.TotalSize
+	} else {
+		// 如果没有统计记录，则实时计算
+		fileCount, totalSize, _ = s.statRepo.GetProjectTotalStats(ctx, id)
+	}
+
 	// 构建响应
 	return &dto.ProjectResponse{
 		ID:          project.ID,
@@ -354,22 +371,43 @@ func (s *projectService) GetProjectByID(ctx context.Context, id string, userID s
 		Status:      project.Status,
 		CreatedAt:   project.CreatedAt,
 		UpdatedAt:   project.UpdatedAt,
-		FileCount:   0, // 此处需补充文件统计逻辑
-		TotalSize:   0, // 此处需补充存储统计逻辑
+		FileCount:   fileCount,
+		TotalSize:   totalSize,
 	}, nil
 }
 
 // ListProjects 列出项目
-func (s *projectService) ListProjects(ctx context.Context, query *dto.ProjectQuery, userID string) ([]*dto.ProjectResponse, int64, error) {
-	// 检查用户是否存在
-	_, err := s.userRepo.GetByID(ctx, userID)
-	if err != nil {
-		return nil, 0, errors.New("用户不存在")
+func (s *projectService) ListProjects(ctx context.Context, groupID string, userID string, query *dto.ProjectQuery) (*dto.PaginatedProjectResponse, error) {
+	// 检查用户是否属于该分组
+	if len(groupID) > 0 {
+		isMember, err := s.groupRepo.CheckUserInGroup(ctx, groupID, userID)
+		if err != nil {
+			return nil, err
+		}
+		if !isMember {
+			return nil, errors.New("没有权限查看该分组项目")
+		}
 	}
 
-	// 构建查询条件
+	// 处理查询参数
+	if query == nil {
+		query = &dto.ProjectQuery{
+			Page: 1,
+			Size: 10,
+		}
+	}
+
+	// 确保分页参数有效
+	if query.Page <= 0 {
+		query.Page = 1
+	}
+	if query.Size <= 0 {
+		query.Size = 10
+	}
+
+	// 构建项目列表请求
 	listReq := &dto.ProjectListRequest{
-		GroupID:   query.GroupID,
+		GroupID:   groupID,
 		Status:    query.Status,
 		Name:      query.Keyword,
 		Page:      query.Page,
@@ -378,34 +416,42 @@ func (s *projectService) ListProjects(ctx context.Context, query *dto.ProjectQue
 		SortOrder: "desc",
 	}
 
-	// 获取项目列表
+	// 查询项目
 	projects, total, err := s.projectRepo.List(ctx, listReq)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 
 	// 构建响应
-	var responses []*dto.ProjectResponse
+	items := make([]*dto.ProjectResponse, 0, len(projects))
 	for _, project := range projects {
 		// 获取创建者信息
 		creator, err := s.userRepo.GetByID(ctx, project.CreatorID)
 		if err != nil {
-			// 如果获取创建者失败，使用默认值
-			creator = &entity.User{
-				Name: "未知用户",
-			}
+			return nil, err
 		}
 
 		// 获取分组信息
 		group, err := s.groupRepo.GetGroupByID(ctx, project.GroupID)
 		if err != nil {
-			// 如果获取分组失败，使用默认值
-			group = &entity.Group{
-				Name: "未知分组",
-			}
+			return nil, err
 		}
 
-		responses = append(responses, &dto.ProjectResponse{
+		// 获取存储统计数据
+		var fileCount int64 = 0
+		var totalSize int64 = 0
+
+		// 先尝试从最新的统计记录获取
+		stat, err := s.statRepo.GetLatestByProject(ctx, project.ID)
+		if err == nil && stat != nil {
+			fileCount = stat.FileCount
+			totalSize = stat.TotalSize
+		} else {
+			// 如果没有统计记录，则实时计算
+			fileCount, totalSize, _ = s.statRepo.GetProjectTotalStats(ctx, project.ID)
+		}
+
+		items = append(items, &dto.ProjectResponse{
 			ID:          project.ID,
 			Name:        project.Name,
 			Description: project.Description,
@@ -417,12 +463,15 @@ func (s *projectService) ListProjects(ctx context.Context, query *dto.ProjectQue
 			Status:      project.Status,
 			CreatedAt:   project.CreatedAt,
 			UpdatedAt:   project.UpdatedAt,
-			FileCount:   0, // 此处需补充文件统计逻辑
-			TotalSize:   0, // 此处需补充存储统计逻辑
+			FileCount:   fileCount,
+			TotalSize:   totalSize,
 		})
 	}
 
-	return responses, total, nil
+	return &dto.PaginatedProjectResponse{
+		Items: items,
+		Total: total,
+	}, nil
 }
 
 // GetUserProjects 获取用户项目
@@ -507,6 +556,20 @@ func (s *projectService) GetUserProjects(ctx context.Context, query *dto.Project
 			}
 		}
 
+		// 获取存储统计数据
+		var fileCount int64 = 0
+		var totalSize int64 = 0
+
+		// 先尝试从最新的统计记录获取
+		stat, err := s.statRepo.GetLatestByProject(ctx, project.ID)
+		if err == nil && stat != nil {
+			fileCount = stat.FileCount
+			totalSize = stat.TotalSize
+		} else {
+			// 如果没有统计记录，则实时计算
+			fileCount, totalSize, _ = s.statRepo.GetProjectTotalStats(ctx, project.ID)
+		}
+
 		responses = append(responses, &dto.ProjectResponse{
 			ID:          project.ID,
 			Name:        project.Name,
@@ -519,8 +582,8 @@ func (s *projectService) GetUserProjects(ctx context.Context, query *dto.Project
 			Status:      project.Status,
 			CreatedAt:   project.CreatedAt,
 			UpdatedAt:   project.UpdatedAt,
-			FileCount:   0, // 此处需补充文件统计逻辑
-			TotalSize:   0, // 此处需补充存储统计逻辑
+			FileCount:   fileCount,
+			TotalSize:   totalSize,
 		})
 	}
 

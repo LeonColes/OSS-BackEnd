@@ -171,7 +171,7 @@ func (c *ProjectController) ListProjects(ctx *gin.Context) {
 	}
 
 	// 调用服务获取项目列表
-	projects, total, err := c.projectService.ListProjects(ctx, &query, userID.(string))
+	result, err := c.projectService.ListProjects(ctx, query.GroupID, userID.(string), &query)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, common.ErrorResponse("获取项目列表失败: "+err.Error()))
 		return
@@ -179,8 +179,8 @@ func (c *ProjectController) ListProjects(ctx *gin.Context) {
 
 	// 返回成功响应
 	ctx.JSON(http.StatusOK, common.SuccessResponse(common.PageResult{
-		Total: total,
-		List:  projects,
+		Total: result.Total,
+		List:  result.Items,
 	}))
 }
 

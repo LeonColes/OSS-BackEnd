@@ -11,6 +11,7 @@ import (
 	"mime/multipart"
 	"oss-backend/internal/model/entity"
 	"oss-backend/internal/repository"
+	"oss-backend/internal/utils"
 	"oss-backend/pkg/minio"
 	"path/filepath"
 	"regexp"
@@ -48,12 +49,18 @@ type FileService interface {
 
 	// 文件权限
 	CheckFilePermission(ctx context.Context, fileID, userID string, requiredAction string) (bool, error)
+
+	// 存储统计
+	UpdateStorageStats(ctx context.Context, projectID string, fileSize int64, isAdd bool) error
+	RecalculateProjectStats(ctx context.Context, projectID string) error
+	VerifyAllProjectsStats(ctx context.Context) error
 }
 
 // fileService 文件服务实现
 type fileService struct {
 	fileRepo    repository.FileRepository
 	projectRepo repository.ProjectRepository
+	statRepo    repository.StorageStatRepository
 	minioClient *minio.Client
 	authService AuthService
 	db          *gorm.DB
@@ -63,6 +70,7 @@ type fileService struct {
 func NewFileService(
 	fileRepo repository.FileRepository,
 	projectRepo repository.ProjectRepository,
+	statRepo repository.StorageStatRepository,
 	minioClient *minio.Client,
 	authService AuthService,
 	db *gorm.DB,
@@ -70,6 +78,7 @@ func NewFileService(
 	return &fileService{
 		fileRepo:    fileRepo,
 		projectRepo: projectRepo,
+		statRepo:    statRepo,
 		minioClient: minioClient,
 		authService: authService,
 		db:          db,
@@ -164,6 +173,9 @@ func (s *fileService) Upload(ctx context.Context, projectID, uploaderID string, 
 			return nil, fmt.Errorf("创建版本记录失败: %w", err)
 		}
 
+		// 计算文件大小差异，用于统计更新
+		sizeDiff := file.Size - existingFileAtPath.FileSize
+
 		// 更新文件记录
 		existingFileAtPath.FileHash = fileHash
 		existingFileAtPath.FileSize = file.Size
@@ -190,6 +202,23 @@ func (s *fileService) Upload(ctx context.Context, projectID, uploaderID string, 
 		// 提交事务
 		if err := tx.Commit().Error; err != nil {
 			return nil, fmt.Errorf("提交事务失败: %w", err)
+		}
+
+		// 如果文件大小有变化，更新存储统计
+		if sizeDiff != 0 {
+			// 这里采用异步方式更新统计，避免阻塞主流程
+			go func() {
+				ctx := context.Background()
+				isAdd := sizeDiff > 0
+				size := sizeDiff
+				if !isAdd {
+					size = -sizeDiff
+				}
+				err := s.UpdateStorageStats(ctx, projectID, size, isAdd)
+				if err != nil {
+					log.Printf("更新存储统计失败: %v", err)
+				}
+			}()
 		}
 
 		return existingFileAtPath, nil
@@ -254,6 +283,15 @@ func (s *fileService) Upload(ctx context.Context, projectID, uploaderID string, 
 	if err := tx.Commit().Error; err != nil {
 		return nil, fmt.Errorf("提交事务失败: %w", err)
 	}
+
+	// 更新存储统计（异步进行，不阻塞主流程）
+	go func() {
+		ctx := context.Background()
+		err := s.UpdateStorageStats(ctx, projectID, file.Size, true)
+		if err != nil {
+			log.Printf("更新存储统计失败: %v", err)
+		}
+	}()
 
 	return newFile, nil
 }
@@ -388,6 +426,10 @@ func (s *fileService) DeleteFile(ctx context.Context, fileID, userID string) err
 		return errors.New("文件已被删除")
 	}
 
+	// 记录文件大小，用于统计更新
+	fileSize := file.FileSize
+	projectID := file.ProjectID
+
 	// 3. 软删除文件
 	file.IsDeleted = true
 	file.DeletedAt = new(time.Time)
@@ -397,6 +439,17 @@ func (s *fileService) DeleteFile(ctx context.Context, fileID, userID string) err
 	err = s.fileRepo.Update(ctx, file)
 	if err != nil {
 		return fmt.Errorf("删除文件失败: %w", err)
+	}
+
+	// 异步更新存储统计
+	if !file.IsFolder && fileSize > 0 {
+		go func() {
+			ctx := context.Background()
+			err := s.UpdateStorageStats(ctx, projectID, fileSize, false)
+			if err != nil {
+				log.Printf("更新存储统计失败: %v", err)
+			}
+		}()
 	}
 
 	return nil
@@ -418,6 +471,10 @@ func (s *fileService) RestoreFile(ctx context.Context, fileID, userID string) er
 		return errors.New("文件未被删除")
 	}
 
+	// 记录文件大小，用于统计更新
+	fileSize := file.FileSize
+	projectID := file.ProjectID
+
 	// 3. 恢复文件
 	file.IsDeleted = false
 	file.DeletedAt = nil
@@ -426,6 +483,17 @@ func (s *fileService) RestoreFile(ctx context.Context, fileID, userID string) er
 	err = s.fileRepo.Update(ctx, file)
 	if err != nil {
 		return fmt.Errorf("恢复文件失败: %w", err)
+	}
+
+	// 异步更新存储统计
+	if !file.IsFolder && fileSize > 0 {
+		go func() {
+			ctx := context.Background()
+			err := s.UpdateStorageStats(ctx, projectID, fileSize, true)
+			if err != nil {
+				log.Printf("更新存储统计失败: %v", err)
+			}
+		}()
 	}
 
 	return nil
@@ -704,4 +772,166 @@ func calculateFileHash(reader io.Reader) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+// UpdateStorageStats 更新存储统计
+func (s *fileService) UpdateStorageStats(ctx context.Context, projectID string, fileSize int64, isAdd bool) error {
+	today := time.Now().Truncate(24 * time.Hour)
+
+	// 事务操作
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		// 先获取项目信息
+		project, err := s.projectRepo.GetByID(ctx, projectID)
+		if err != nil {
+			return fmt.Errorf("获取项目信息失败: %w", err)
+		}
+		if project == nil {
+			return errors.New("项目不存在")
+		}
+
+		// 查找今日统计记录
+		var stat entity.StorageStat
+		result := tx.Where("project_id = ? AND stat_date = ?", projectID, today).First(&stat)
+
+		if result.Error != nil {
+			if !errors.Is(result.Error, gorm.ErrRecordNotFound) {
+				return fmt.Errorf("查询存储统计失败: %w", result.Error)
+			}
+
+			// 记录不存在，创建新记录
+			// 计算当前文件数和大小
+			fileCount, totalSize, err := s.statRepo.GetProjectTotalStats(ctx, projectID)
+			if err != nil {
+				return fmt.Errorf("计算项目统计失败: %w", err)
+			}
+
+			// 创建今天的统计记录
+			var increaseValue int64 = 0
+			if isAdd {
+				increaseValue = fileSize
+			}
+
+			stat = entity.StorageStat{
+				ID:           utils.GenerateRecordID(),
+				GroupID:      project.GroupID,
+				ProjectID:    projectID,
+				StatDate:     today,
+				FileCount:    fileCount,
+				TotalSize:    totalSize,
+				IncreaseSize: increaseValue, // 如果是添加文件，则增加增量
+				CreatedAt:    time.Now(),
+			}
+
+			return tx.Create(&stat).Error
+		}
+
+		// 更新已有记录
+		updates := map[string]interface{}{}
+
+		if isAdd {
+			updates["file_count"] = gorm.Expr("file_count + ?", 1)
+			updates["total_size"] = gorm.Expr("total_size + ?", fileSize)
+			updates["increase_size"] = gorm.Expr("increase_size + ?", fileSize)
+		} else {
+			updates["file_count"] = gorm.Expr("file_count - ?", 1)
+			updates["total_size"] = gorm.Expr("total_size - ?", fileSize)
+			// 不减少 increase_size，因为它表示的是一段时间内的增量
+		}
+
+		return tx.Model(&entity.StorageStat{}).
+			Where("id = ?", stat.ID).
+			Updates(updates).Error
+	})
+}
+
+// RecalculateProjectStats 重新计算项目统计
+func (s *fileService) RecalculateProjectStats(ctx context.Context, projectID string) error {
+	today := time.Now().Truncate(24 * time.Hour)
+
+	// 事务操作
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		// 获取项目信息
+		project, err := s.projectRepo.GetByID(ctx, projectID)
+		if err != nil {
+			return fmt.Errorf("获取项目信息失败: %w", err)
+		}
+		if project == nil {
+			return errors.New("项目不存在")
+		}
+
+		// 计算当前文件数和大小
+		fileCount, totalSize, err := s.statRepo.GetProjectTotalStats(ctx, projectID)
+		if err != nil {
+			return fmt.Errorf("计算项目统计失败: %w", err)
+		}
+
+		// 查找今日统计记录
+		var stat entity.StorageStat
+		result := tx.Where("project_id = ? AND stat_date = ?", projectID, today).First(&stat)
+
+		// 计算增量值需要昨天的数据
+		yesterday := today.AddDate(0, 0, -1)
+		var yesterdayStat entity.StorageStat
+		tx.Where("project_id = ? AND stat_date = ?", projectID, yesterday).First(&yesterdayStat)
+
+		var increaseSize int64 = 0
+		if yesterdayStat.ID != "" {
+			// 有昨天的数据，计算增量
+			increaseSize = totalSize - yesterdayStat.TotalSize
+			if increaseSize < 0 {
+				increaseSize = 0 // 防止负值
+			}
+		} else {
+			// 没有昨天的数据，增量就是今天的全部大小
+			increaseSize = totalSize
+		}
+
+		if result.Error != nil {
+			if !errors.Is(result.Error, gorm.ErrRecordNotFound) {
+				return fmt.Errorf("查询存储统计失败: %w", result.Error)
+			}
+
+			// 记录不存在，创建新记录
+			stat = entity.StorageStat{
+				ID:           utils.GenerateRecordID(),
+				GroupID:      project.GroupID,
+				ProjectID:    projectID,
+				StatDate:     today,
+				FileCount:    fileCount,
+				TotalSize:    totalSize,
+				IncreaseSize: increaseSize,
+				CreatedAt:    time.Now(),
+			}
+
+			return tx.Create(&stat).Error
+		}
+
+		// 更新已有记录
+		stat.FileCount = fileCount
+		stat.TotalSize = totalSize
+		stat.IncreaseSize = increaseSize
+
+		return tx.Save(&stat).Error
+	})
+}
+
+// VerifyAllProjectsStats 验证所有项目统计
+func (s *fileService) VerifyAllProjectsStats(ctx context.Context) error {
+	// 获取所有项目
+	projects, err := s.projectRepo.GetAll(ctx)
+	if err != nil {
+		return fmt.Errorf("获取项目列表失败: %w", err)
+	}
+
+	// 逐个重新计算项目统计
+	for _, project := range projects {
+		err := s.RecalculateProjectStats(ctx, project.ID)
+		if err != nil {
+			log.Printf("重新计算项目 %s 统计失败: %v", project.ID, err)
+			// 继续处理其他项目，不中断
+			continue
+		}
+	}
+
+	return nil
 }

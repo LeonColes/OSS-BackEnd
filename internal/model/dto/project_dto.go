@@ -80,3 +80,9 @@ type ProjectListRequest struct {
 	SortBy    string `json:"sort_by" form:"sort_by"`       // 排序字段
 	SortOrder string `json:"sort_order" form:"sort_order"` // 排序方向（asc/desc）
 }
+
+// PaginatedProjectResponse 分页项目响应
+type PaginatedProjectResponse struct {
+	Items []*ProjectResponse `json:"items"` // 项目列表
+	Total int64              `json:"total"` // 总项目数
+}
