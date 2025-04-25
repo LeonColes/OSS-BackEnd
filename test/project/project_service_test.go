@@ -1,4 +1,4 @@
-package test
+package project_test
 
 import (
 	"context"

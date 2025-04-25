@@ -241,8 +241,8 @@ func runMinioTest(t *testing.T, client interfaces.MinioClient, bucketName string
 		if object.Err != nil {
 			continue
 		}
-		t.Logf("  - 对象: %s (大小: %d, 最后修改: %s)",
-			object.Key, object.Size, object.LastModified.Format("2006-01-02 15:04:05"))
+		t.Logf("  - 对象: %s (大小: %d, 类型: %s, 最后修改: %s)",
+			object.Key, object.Size, getContentType(object.Key), object.LastModified.Format("2006-01-02 15:04:05"))
 		if strings.Contains(object.Key, "test-file-") {
 			found = true
 		}
