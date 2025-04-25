@@ -22,6 +22,8 @@
 - **Model层**: 数据模型定义
 - **Util层**: 工具函数
 
+详细架构图请参考[架构设计文档](docs/architecture.md)。
+
 ## 开发环境设置
 
 ### 前置要求
@@ -94,6 +96,70 @@ API服务默认运行在 `http://localhost:8080`
 - 运行应用: `go run cmd/server/main.go`
 - 启动依赖: `docker-compose up -d mysql redis minio`
 - 停止依赖: `docker-compose down`
+
+## 测试
+
+### 前置条件
+
+测试前，请确保:
+
+1. 已安装Go环境 (推荐Go 1.21+)
+2. 已安装mockery工具 (可通过`go install github.com/vektra/mockery/v2@latest`安装)
+3. 已生成mock文件 (可通过`make mock`生成)
+
+### 运行测试
+
+#### 运行所有测试
+
+```bash
+make test
+```
+
+这个命令会:
+1. 生成mock文件
+2. 运行所有单元测试
+3. 运行集成测试(如果有)
+
+#### 运行单元测试
+
+```bash
+make unit-test
+```
+
+#### 测试特定包
+
+```bash
+make test-pkg PKG=./test/minio
+```
+
+您可以替换`./test/minio`为任何包路径。
+
+#### 测试特定文件
+
+```bash
+make test-file FILE=./test/minio/bucket_name_test.go
+```
+
+您可以替换`./test/minio/bucket_name_test.go`为任何测试文件路径。
+
+### 生成Mock文件
+
+在进行单元测试前，您需要生成相应的mock文件:
+
+```bash
+make mock
+```
+
+该命令会在`./mocks`目录下生成所有接口的mock实现。
+
+### 测试目录结构
+
+- `test/minio/`: MinIO相关测试
+- `test/file/`: 文件服务测试
+- `test/project/`: 项目服务测试
+- `test/rbac/`: 权限管理测试
+- `test/storage/`: 存储服务测试
+- `test/user/`: 用户服务测试
 
 ## 生产环境部署
 

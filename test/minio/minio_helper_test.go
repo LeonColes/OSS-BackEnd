@@ -2,6 +2,7 @@ package minio_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -53,7 +54,9 @@ func TestGetObjectName(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			result := pkgminio.GetObjectName(tc.projectID, tc.filePath, tc.fileName)
-			assert.Equal(t, tc.expected, result, "对象名称不匹配")
+			// 统一转换为Unix风格的路径分隔符进行比较
+			normalizedResult := strings.ReplaceAll(result, "\\", "/")
+			assert.Equal(t, tc.expected, normalizedResult, "对象名称不匹配")
 		})
 	}
 }

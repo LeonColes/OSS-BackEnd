@@ -1,4 +1,4 @@
-.PHONY: build run dev clean mock test unit-test integration-test docker-build docker-compose init-db create-db swagger docs api-docs all-docs test-build test-generate test-run
+.PHONY: build run dev clean mock test unit-test integration-test docker-build docker-compose init-db create-db swagger docs api-docs all-docs test-pkg test-file
 
 # 默认目标
 all: build
@@ -30,20 +30,42 @@ endif
 
 # 生成 Mock 文件 (使用 mockery)
 mock:
-	go install github.com/vektra/mockery/v2@latest
-	mockery --all --keeptree --with-expecter --outpkg=mocks --output=./mocks
+	@echo "生成mock文件..."
+	@go install github.com/vektra/mockery/v2@latest
+	@mockery --all --keeptree --with-expecter --outpkg=mocks --output=./mocks
+	@echo "Mock文件生成完成。"
 
 # 运行单元测试
 unit-test:
 	@echo "Running unit tests..."
 	go test ./... -v -cover
 
+# 测试特定包 (使用: make test-pkg PKG=./test/minio)
+test-pkg:
+ifndef PKG
+	@echo "使用方法: make test-pkg PKG=<包路径>"
+	@echo "示例: make test-pkg PKG=./test/minio"
+	@exit 1
+endif
+	@echo "测试包: $(PKG)"
+	go test $(PKG) -v -cover
+
+# 测试特定文件 (使用: make test-file FILE=./test/minio/bucket_name_test.go)
+test-file:
+ifndef FILE
+	@echo "使用方法: make test-file FILE=<测试文件路径>"
+	@echo "示例: make test-file FILE=./test/minio/bucket_name_test.go"
+	@exit 1
+endif
+	@echo "测试文件: $(FILE)"
+	go test $(FILE) -v -cover
+
 # 运行集成测试 (示例，可能需要特定设置)
 integration-test:
 	@echo "Running integration tests (if any)..."
 
 # 运行所有测试 (单元测试 + 集成测试)
-test: unit-test integration-test mock test-build test-generate test-run
+test: mock unit-test integration-test
 	@echo "All tests completed."
 
 # 启动开发环境的数据库和服务
@@ -128,7 +150,9 @@ help:
 	@echo "  make dev            - 开发模式运行应用"
 	@echo "  make clean          - 清理构建文件和根目录下的 mocks"
 	@echo "  make mock           - 在根目录 ./mocks 下生成单元测试所需的 mock 文件 (需要 mockery)"
-	@echo "  make unit-test      - 运行单元测试"
+	@echo "  make unit-test      - 运行所有单元测试"
+	@echo "  make test-pkg PKG=./path/to/pkg - 测试特定包"
+	@echo "  make test-file FILE=./path/to/test.go - 测试特定文件"
 	@echo "  make integration-test - 运行集成测试 (需要实现)"
 	@echo "  make test           - 运行所有测试 (单元 + 集成)"
 	@echo "  make dev-env-up     - 启动开发环境的数据库和服务"
@@ -138,8 +162,6 @@ help:
 	@echo "  make docker-compose - 运行Docker Compose环境"
 	@echo "  make docker-compose-down - 停止Docker Compose环境"
 	@echo "  make logs           - 显示Docker Compose日志"
-	@echo "  make init-db        - 通过Docker初始化数据库"
-	@echo "  make create-db      - 不依赖Docker创建和初始化数据库"
 	@echo "  make swagger        - 生成Swagger文档"
 	@echo "  make api-docs       - 生成API文档（包含Swagger）"
 	@echo "  make code-docs      - 生成代码文档并启动godoc服务器"

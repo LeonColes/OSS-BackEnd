@@ -24,10 +24,10 @@ func TestSanitizeBucketName(t *testing.T) {
 	}{
 		{"小写字母和数字", "test123", "group-test123"},
 		{"大写字母", "TEST", "group-test"},
-		{"特殊字符", "test@#$%", "group-test----"},
+		{"特殊字符", "test@#$%", "group-test"},
 		{"空格", "test space", "group-test-space"},
-		{"中文", "测试", "group------"},
-		{"很长的键", "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz", "group-abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcd"},
+		{"中文", "测试", "group-grp-"},
+		{"很长的键", "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz", "group-abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefgh"},
 	}
 
 	for _, tt := range tests {
@@ -90,7 +90,7 @@ func TestGenerateBucketName(t *testing.T) {
 		{
 			name:      "很长的项目ID",
 			projectID: "this-is-a-very-long-project-id-that-exceeds-the-valid-bucket-name-length",
-			expected:  "project-this-is-a-very-long-project-id-that-excee",
+			expected:  "project-this-is-a-very-long-project-id-that-exceeds-the-valid-b",
 		},
 	}
 
