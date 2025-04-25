@@ -45,6 +45,9 @@ func SetupRouter(r *gin.Engine, db *gorm.DB, enforcer *casbin.Enforcer, minioCli
 		// 注册用户相关路由
 		registerUserRoutes(apiGroup, userRepo, roleRepo, jwtMiddleware, authMiddleware, authService)
 
+		// 注册角色相关路由
+		registerRoleRoutes(apiGroup, jwtMiddleware, authMiddleware, authService)
+
 		// 注册群组相关路由
 		registerGroupRoutes(apiGroup, userRepo, roleRepo, groupRepo, jwtMiddleware, authMiddleware, authService, minioClient)
 
