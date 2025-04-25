@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +13,7 @@ import (
 	"oss-backend/internal/repository"
 	"oss-backend/pkg/minio"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -84,6 +87,17 @@ func (s *fileService) Upload(ctx context.Context, projectID, uploaderID string, 
 		return nil, errors.New("项目不存在")
 	}
 
+	// 获取群组信息，确认存储桶名称
+	if project.Group.GroupKey == "" {
+		return nil, errors.New("项目未关联有效群组")
+	}
+	bucketName := s.sanitizeBucketName(project.Group.GroupKey)
+
+	// 确保存储桶存在
+	if err := s.ensureBucketExists(ctx, bucketName); err != nil {
+		return nil, fmt.Errorf("存储准备失败: %w", err)
+	}
+
 	// 确保路径以/结尾
 	if path != "" && !strings.HasSuffix(path, "/") {
 		path = path + "/"
@@ -97,7 +111,7 @@ func (s *fileService) Upload(ctx context.Context, projectID, uploaderID string, 
 	defer src.Close()
 
 	// 3. 计算文件哈希值
-	fileHash, err := s.minioClient.GetFileHash(src)
+	fileHash, err := calculateFileHash(src)
 	if err != nil {
 		return nil, fmt.Errorf("计算文件哈希失败: %w", err)
 	}
@@ -166,7 +180,7 @@ func (s *fileService) Upload(ctx context.Context, projectID, uploaderID string, 
 		if existingFile == nil {
 			// 在MinIO中创建文件
 			objectName := minio.GetObjectName(projectID, path, fileName)
-			_, err = s.minioClient.UploadFile(ctx, project.Group.GroupKey, objectName, src, file.Size, file.Header.Get("Content-Type"))
+			_, err = s.minioClient.UploadFile(ctx, bucketName, objectName, src, file.Size, file.Header.Get("Content-Type"))
 			if err != nil {
 				tx.Rollback()
 				return nil, fmt.Errorf("上传文件失败: %w", err)
@@ -229,7 +243,7 @@ func (s *fileService) Upload(ctx context.Context, projectID, uploaderID string, 
 	if existingFile == nil {
 		// 在MinIO中创建文件
 		objectName := minio.GetObjectName(projectID, path, fileName)
-		_, err = s.minioClient.UploadFile(ctx, project.Group.GroupKey, objectName, src, file.Size, file.Header.Get("Content-Type"))
+		_, err = s.minioClient.UploadFile(ctx, bucketName, objectName, src, file.Size, file.Header.Get("Content-Type"))
 		if err != nil {
 			tx.Rollback()
 			return nil, fmt.Errorf("上传文件失败: %w", err)
@@ -271,7 +285,8 @@ func (s *fileService) Download(ctx context.Context, fileID, userID string) (io.R
 
 	// 4. 从MinIO下载文件
 	objectName := minio.GetObjectName(file.ProjectID, file.FilePath, file.FileName)
-	fileReader, _, err := s.minioClient.DownloadFile(ctx, project.Group.GroupKey, objectName)
+	bucketName := s.sanitizeBucketName(project.Group.GroupKey)
+	fileReader, _, err := s.minioClient.DownloadFile(ctx, bucketName, objectName)
 	if err != nil {
 		return nil, nil, fmt.Errorf("下载文件失败: %w", err)
 	}
@@ -573,7 +588,8 @@ func (s *fileService) DownloadSharedFile(ctx context.Context, shareCode, passwor
 
 	// 6. 从MinIO下载文件
 	objectName := minio.GetObjectName(file.ProjectID, file.FilePath, file.FileName)
-	fileReader, _, err := s.minioClient.DownloadFile(ctx, project.Group.GroupKey, objectName)
+	bucketName := s.sanitizeBucketName(project.Group.GroupKey)
+	fileReader, _, err := s.minioClient.DownloadFile(ctx, bucketName, objectName)
 	if err != nil {
 		return nil, nil, fmt.Errorf("下载文件失败: %w", err)
 	}
@@ -610,7 +626,8 @@ func (s *fileService) GetPublicDownloadURL(ctx context.Context, fileID string) (
 
 	// 3. 生成公共下载URL
 	objectName := minio.GetObjectName(file.ProjectID, file.FilePath, file.FileName)
-	return s.minioClient.GetPublicDownloadURL(ctx, project.Group.GroupKey, objectName)
+	bucketName := s.sanitizeBucketName(project.Group.GroupKey)
+	return s.minioClient.GetPublicDownloadURL(ctx, bucketName, objectName)
 }
 
 func (s *fileService) CheckFilePermission(ctx context.Context, fileID, userID string, requiredAction string) (bool, error) {
@@ -635,4 +652,56 @@ func (s *fileService) CheckFilePermission(ctx context.Context, fileID, userID st
 	// 3. 检查用户是否拥有执行所需操作的权限
 	projectDomain := fmt.Sprintf("project:%s", file.ProjectID)
 	return s.authService.CanUserAccessResource(ctx, userID, "files", requiredAction, projectDomain)
+}
+
+// ensureBucketExists 确保存储桶存在
+func (s *fileService) ensureBucketExists(ctx context.Context, bucketName string) error {
+	// bucketName应该已经通过sanitizeBucketName函数处理过了
+
+	// 检查并创建存储桶
+	err := s.minioClient.CreateBucketIfNotExists(ctx, bucketName)
+	if err != nil {
+		log.Printf("确保存储桶 %s 存在时发生错误: %v", bucketName, err)
+		// 检查是否是网络问题
+		if strings.Contains(err.Error(), "connection") || strings.Contains(err.Error(), "timeout") {
+			return fmt.Errorf("连接MinIO服务器失败，请检查网络或服务器状态: %w", err)
+		}
+		// 检查是否是权限问题
+		if strings.Contains(err.Error(), "AccessDenied") || strings.Contains(err.Error(), "access denied") {
+			return fmt.Errorf("MinIO权限被拒绝，请联系管理员创建存储桶 %s 或调整权限: %w", bucketName, err)
+		}
+		return fmt.Errorf("创建MinIO存储桶失败: %w", err)
+	}
+	return nil
+}
+
+// sanitizeBucketName 规范化桶名称，使其符合S3规范
+func (s *fileService) sanitizeBucketName(key string) string {
+	// 生成符合S3规范的桶名称：只能包含小写字母、数字和连字符
+	// 1. 将所有字符转为小写
+	lowerKey := strings.ToLower(key)
+	// 2. 替换所有非法字符为连字符
+	reg := regexp.MustCompile(`[^a-z0-9\-]`)
+	sanitizedKey := reg.ReplaceAllString(lowerKey, "-")
+	// 3. 确保不以连字符开头或结尾
+	sanitizedKey = strings.Trim(sanitizedKey, "-")
+	// 4. 如果长度不足，添加前缀
+	if len(sanitizedKey) < 3 {
+		sanitizedKey = fmt.Sprintf("grp-%s", sanitizedKey)
+	}
+	// 5. 如果长度过长，截断
+	if len(sanitizedKey) > 60 {
+		sanitizedKey = sanitizedKey[:60]
+	}
+
+	return fmt.Sprintf("group-%s", sanitizedKey)
+}
+
+// calculateFileHash 计算文件哈希
+func calculateFileHash(reader io.Reader) (string, error) {
+	hash := sha256.New()
+	if _, err := io.Copy(hash, reader); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
 }

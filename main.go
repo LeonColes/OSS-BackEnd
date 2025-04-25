@@ -21,6 +21,7 @@ import (
 	"oss-backend/internal/model/entity"
 	"oss-backend/internal/repository"
 	"oss-backend/internal/service"
+	"oss-backend/pkg/minio"
 	"oss-backend/routes"
 )
 
@@ -80,6 +81,19 @@ func main() {
 		log.Fatalf("初始化数据库失败: %v", err)
 	}
 
+	// 初始化MinIO客户端
+	minioConfig := minio.Config{
+		Endpoint:  viper.GetString("minio.endpoint"),
+		AccessKey: viper.GetString("minio.access_key"),
+		SecretKey: viper.GetString("minio.secret_key"),
+		UseSSL:    viper.GetBool("minio.use_ssl"),
+	}
+
+	minioClient, err := minio.NewClient(minioConfig)
+	if err != nil {
+		log.Fatalf("初始化MinIO客户端失败: %v", err)
+	}
+
 	// 初始化 Casbin Enforcer
 	enforcer, err := initCasbin(db)
 	if err != nil {
@@ -95,7 +109,7 @@ func main() {
 	r := gin.Default()
 
 	// 设置路由 (需要将 Enforcer 传递下去，或者通过依赖注入)
-	routes.SetupRouter(r, db, enforcer)
+	routes.SetupRouter(r, db, enforcer, minioClient)
 
 	// 读取服务器端口配置
 	port := viper.GetInt("server.port")

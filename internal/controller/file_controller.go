@@ -224,7 +224,17 @@ func (c *FileController) ListFiles(ctx *gin.Context) {
 	}
 
 	for _, file := range files {
-		response.Items = append(response.Items, buildFileResponse(file))
+		fileResponse := buildFileResponse(file)
+
+		// 如果不是文件夹且预览URL为空，则尝试获取
+		if !file.IsFolder && fileResponse.PreviewURL == "" {
+			publicURL, _ := c.fileService.GetPublicDownloadURL(ctx, file.ID)
+			if publicURL != "" {
+				fileResponse.PreviewURL = publicURL
+			}
+		}
+
+		response.Items = append(response.Items, fileResponse)
 	}
 
 	ctx.JSON(http.StatusOK, common.SuccessResponse(response))
@@ -597,6 +607,66 @@ func (c *FileController) DownloadSharedFile(ctx *gin.Context) {
 
 	// 发送文件内容
 	ctx.DataFromReader(http.StatusOK, file.FileSize, file.MimeType, fileReader, nil)
+}
+
+// GetPublicURL 获取文件公共访问URL
+// @Summary 获取文件公共访问URL
+// @Description 获取指定ID文件的公共访问URL（有效期7天）
+// @Tags 文件管理
+// @Produce json
+// @Param Authorization header string true "Bearer {{token}}"
+// @Param id path string true "文件ID"
+// @Success 200 {object} common.Response{data=string} "成功"
+// @Failure 400 {object} common.Response "请求参数错误"
+// @Failure 401 {object} common.Response "未授权"
+// @Failure 403 {object} common.Response "权限不足"
+// @Failure 404 {object} common.Response "文件不存在"
+// @Failure 500 {object} common.Response "内部服务器错误"
+// @Router /api/oss/file/public-url/{id} [get]
+func (c *FileController) GetPublicURL(ctx *gin.Context) {
+	// 获取当前用户ID
+	userIDValue, exists := ctx.Get("userID")
+	if !exists {
+		ctx.JSON(http.StatusUnauthorized, common.ErrorResponse("未授权"))
+		return
+	}
+	userID := userIDValue.(string)
+
+	// 获取文件ID
+	idStr := ctx.Param("id")
+	id := idStr
+
+	// 获取文件信息
+	fileInfo, err := c.fileService.GetFileInfo(ctx, id)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, common.ErrorResponse("获取文件信息失败: "+err.Error()))
+		return
+	}
+	if fileInfo == nil {
+		ctx.JSON(http.StatusNotFound, common.ErrorResponse("文件不存在"))
+		return
+	}
+
+	// 检查项目权限 (需要读取权限)
+	projectDomain := fmt.Sprintf("project:%s", fileInfo.ProjectID)
+	canRead, err := c.authService.CanUserAccessResource(ctx, userID, "files", service.ActionRead, projectDomain)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, common.ErrorResponse("检查权限失败: "+err.Error()))
+		return
+	}
+	if !canRead {
+		ctx.JSON(http.StatusForbidden, common.ErrorResponse("没有文件读取权限"))
+		return
+	}
+
+	// 获取公共下载URL
+	url, err := c.fileService.GetPublicDownloadURL(ctx, id)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, common.ErrorResponse("获取公共URL失败: "+err.Error()))
+		return
+	}
+
+	ctx.JSON(http.StatusOK, common.SuccessResponse(url))
 }
 
 // 构建文件响应对象

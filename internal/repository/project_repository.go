@@ -65,7 +65,7 @@ func (r *projectRepository) Create(ctx context.Context, project *entity.Project)
 // GetByID 根据ID获取项目
 func (r *projectRepository) GetByID(ctx context.Context, id string) (*entity.Project, error) {
 	var project entity.Project
-	err := r.db.WithContext(ctx).Where("id = ?", id).First(&project).Error
+	err := r.db.WithContext(ctx).Where("id = ?", id).Preload("Group").First(&project).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil

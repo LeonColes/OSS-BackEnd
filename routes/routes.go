@@ -6,8 +6,7 @@ import (
 
 	"github.com/casbin/casbin/v2"
 	"github.com/gin-gonic/gin"
-	"github.com/spf13/viper"
-	swaggerFiles "github.com/swaggo/files"
+	swaggerFiles "github.com/swaggo/files" // swagger embed files
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"gorm.io/gorm"
 
@@ -19,48 +18,42 @@ import (
 )
 
 // SetupRouter 设置路由 (接收 Enforcer)
-func SetupRouter(r *gin.Engine, db interface{}, enforcer *casbin.Enforcer) {
-	// 转换数据库连接
-	gormDB, ok := db.(*gorm.DB)
-	if !ok {
-		panic("数据库连接类型错误")
-	}
-
+func SetupRouter(r *gin.Engine, db *gorm.DB, enforcer *casbin.Enforcer, minioClient *minio.Client) {
 	// Swagger 文档
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
-	// 创建中间件
+	// 创建仓库
+	userRepo := repository.NewUserRepository(db)
+	roleRepo := repository.NewRoleRepository(db)
+	groupRepo := repository.NewGroupRepository(db)
+	projectRepo := repository.NewProjectRepository(db)
+	fileRepo := repository.NewFileRepository(db)
+	casbinRepo := repository.NewCasbinRepository(db)
+
+	// 创建JWT中间件
 	jwtMiddleware := middleware.NewJWTAuthMiddleware()
 
-	// 创建仓库
-	userRepo := repository.NewUserRepository(gormDB)
-	roleRepo := repository.NewRoleRepository(gormDB)
-	groupRepo := repository.NewGroupRepository(gormDB)
-	casbinRepo := repository.NewCasbinRepository(gormDB)
-
 	// 创建统一的认证授权服务 (需要 Enforcer, 在 main.go 初始化)
-	authSvc := service.NewAuthService(enforcer, roleRepo, userRepo, casbinRepo, gormDB)
+	authService := service.NewAuthService(enforcer, roleRepo, userRepo, casbinRepo, db)
 
 	// 创建认证与授权中间件 (传入 Enforcer)
-	authMiddleware := middleware.NewAuthMiddleware(authSvc, userRepo, enforcer)
+	authMiddleware := middleware.NewAuthMiddleware(authService, userRepo, enforcer)
 
-	// 设置 API 前缀
+	// API 路由组
 	apiGroup := r.Group("/api/oss")
+	{
+		// 注册用户相关路由
+		registerUserRoutes(apiGroup, userRepo, roleRepo, jwtMiddleware, authMiddleware, authService)
 
-	// 注册角色相关路由 (AuthService 已包含 Enforcer)
-	registerRoleRoutes(apiGroup, jwtMiddleware, authMiddleware, authSvc)
+		// 注册群组相关路由
+		registerGroupRoutes(apiGroup, userRepo, roleRepo, groupRepo, jwtMiddleware, authMiddleware, authService, minioClient)
 
-	// 注册用户相关路由 (AuthService 已包含 Enforcer)
-	registerUserRoutes(apiGroup, gormDB, jwtMiddleware, authMiddleware, authSvc)
+		// 注册项目相关路由
+		registerProjectRoutes(apiGroup, projectRepo, groupRepo, userRepo, fileRepo, jwtMiddleware, authMiddleware, authService, db, minioClient)
 
-	// 注册群组相关路由 (AuthMiddleware 需要 Enforcer)
-	registerGroupRoutes(apiGroup, userRepo, roleRepo, groupRepo, jwtMiddleware, authMiddleware, authSvc)
-
-	// 注册项目相关路由 (AuthService 和 AuthMiddleware 需要 Enforcer)
-	registerProjectRoutes(apiGroup, gormDB, jwtMiddleware, authSvc, authMiddleware)
-
-	// 注册文件相关路由 (AuthService 和 AuthMiddleware 需要 Enforcer)
-	registerFileRoutes(apiGroup, gormDB, jwtMiddleware, authMiddleware, authSvc)
+		// 注册文件相关路由
+		registerFileRoutes(apiGroup, fileRepo, projectRepo, minioClient, jwtMiddleware, authMiddleware, authService, db)
+	}
 }
 
 // 注册角色相关路由
@@ -89,14 +82,13 @@ func registerRoleRoutes(
 // 注册用户相关路由
 func registerUserRoutes(
 	apiGroup *gin.RouterGroup,
-	db *gorm.DB,
+	userRepo repository.UserRepository,
+	roleRepo repository.RoleRepository,
 	jwtMiddleware *middleware.JWTAuthMiddleware,
 	authMiddleware *middleware.AuthMiddleware,
 	authService service.AuthService,
 ) {
 	// 创建依赖
-	userRepo := repository.NewUserRepository(db)
-	roleRepo := repository.NewRoleRepository(db)
 	userService := service.NewUserService(userRepo, roleRepo, authService)
 	userController := controller.NewUserController(userService)
 
@@ -141,9 +133,10 @@ func registerGroupRoutes(
 	jwtMiddleware *middleware.JWTAuthMiddleware,
 	authMiddleware *middleware.AuthMiddleware,
 	authService service.AuthService,
+	minioClient *minio.Client, // 添加MinIO客户端参数
 ) {
 	// 创建依赖
-	groupService := service.NewGroupService(groupRepo, userRepo, roleRepo, authService)
+	groupService := service.NewGroupService(groupRepo, userRepo, roleRepo, authService, minioClient)
 	groupController := controller.NewGroupController(groupService)
 
 	// 群组相关路由
@@ -174,22 +167,24 @@ func registerGroupRoutes(
 // 注册项目相关路由
 func registerProjectRoutes(
 	apiGroup *gin.RouterGroup,
-	db *gorm.DB,
+	projectRepo repository.ProjectRepository,
+	groupRepo repository.GroupRepository,
+	userRepo repository.UserRepository,
+	fileRepo repository.FileRepository,
 	jwtMiddleware *middleware.JWTAuthMiddleware,
-	authService service.AuthService,
 	authMiddleware *middleware.AuthMiddleware,
+	authService service.AuthService,
+	db *gorm.DB,
+	minioClient *minio.Client,
 ) {
 	// 初始化项目仓库和服务
-	projectRepo := repository.NewProjectRepository(db)
-	groupRepo := repository.NewGroupRepository(db)
-	userRepo := repository.NewUserRepository(db)
-
 	projectService := service.NewProjectService(
 		projectRepo,
 		groupRepo,
 		userRepo,
 		authService,
 		db,
+		minioClient,
 	)
 	projectController := controller.NewProjectController(projectService)
 
@@ -224,37 +219,14 @@ func registerProjectRoutes(
 // 注册文件相关路由
 func registerFileRoutes(
 	apiGroup *gin.RouterGroup,
-	db *gorm.DB,
+	fileRepo repository.FileRepository,
+	projectRepo repository.ProjectRepository,
+	minioClient *minio.Client,
 	jwtMiddleware *middleware.JWTAuthMiddleware,
 	authMiddleware *middleware.AuthMiddleware,
 	authService service.AuthService,
+	db *gorm.DB,
 ) {
-	// 创建仓库
-	fileRepo := repository.NewFileRepository(db)
-	projectRepo := repository.NewProjectRepository(db)
-
-	// 从配置获取MinIO参数
-	minioConfig := minio.Config{
-		Endpoint:  viper.GetString("minio.endpoint"),
-		AccessKey: viper.GetString("minio.access_key"),
-		SecretKey: viper.GetString("minio.secret_key"),
-		UseSSL:    viper.GetBool("minio.use_ssl"),
-	}
-
-	// 如果配置为空，使用默认值
-	if minioConfig.Endpoint == "" {
-		minioConfig.Endpoint = "localhost:9000"
-		minioConfig.AccessKey = "minioadmin"
-		minioConfig.SecretKey = "minioadmin"
-		minioConfig.UseSSL = false
-	}
-
-	// 创建MinIO客户端
-	minioClient, err := minio.NewClient(minioConfig)
-	if err != nil {
-		panic("初始化MinIO客户端失败: " + err.Error())
-	}
-
 	// 创建文件服务
 	fileService := service.NewFileService(fileRepo, projectRepo, minioClient, authService, db)
 
@@ -273,6 +245,7 @@ func registerFileRoutes(
 		// 文件管理路由
 		fileGroup.POST("/upload", authMiddleware.Authorize("files", "create", getFileGroupID), fileController.Upload)
 		fileGroup.GET("/download/:id", authMiddleware.Authorize("files", "read", getFileGroupID), fileController.Download)
+		fileGroup.GET("/public-url/:id", authMiddleware.Authorize("files", "read", getFileGroupID), fileController.GetPublicURL)
 		fileGroup.GET("/list", authMiddleware.Authorize("files", "read", getFileGroupID), fileController.ListFiles)
 		fileGroup.POST("/folder", authMiddleware.Authorize("files", "create", getFileGroupID), fileController.CreateFolder)
 		fileGroup.GET("/delete/:id", authMiddleware.Authorize("files", "delete", getFileGroupID), fileController.DeleteFile)

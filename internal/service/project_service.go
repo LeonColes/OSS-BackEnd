@@ -11,6 +11,7 @@ import (
 	"oss-backend/internal/model/dto"
 	"oss-backend/internal/model/entity"
 	"oss-backend/internal/repository"
+	"oss-backend/pkg/minio"
 )
 
 // 项目状态常量
@@ -56,6 +57,7 @@ type projectService struct {
 	userRepo    repository.UserRepository
 	authService AuthService
 	db          *gorm.DB
+	minioClient *minio.Client
 }
 
 // NewProjectService 创建项目服务实例
@@ -65,6 +67,7 @@ func NewProjectService(
 	userRepo repository.UserRepository,
 	authService AuthService,
 	db *gorm.DB,
+	minioClient *minio.Client,
 ) ProjectService {
 	return &projectService{
 		projectRepo: projectRepo,
@@ -72,6 +75,7 @@ func NewProjectService(
 		userRepo:    userRepo,
 		authService: authService,
 		db:          db,
+		minioClient: minioClient,
 	}
 }
 

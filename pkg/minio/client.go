@@ -12,7 +12,12 @@ import (
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+
+	"oss-backend/internal/interfaces"
 )
+
+// 确保Client实现了MinioClient接口
+var _ interfaces.MinioClient = (*Client)(nil)
 
 // Config MinIO配置
 type Config struct {
@@ -50,11 +55,16 @@ type PutObjectOptions struct {
 type GetObjectOptions struct{}
 
 // PutObject 上传对象
-func (c *Client) PutObject(ctx context.Context, bucketName, objectName string, reader io.Reader, size int64, opts PutObjectOptions) error {
-	// 转换为MinIO选项
-	options := minio.PutObjectOptions{}
-	if opts.ContentType != "" {
-		options.ContentType = opts.ContentType
+func (c *Client) PutObject(ctx context.Context, bucketName, objectName string, reader io.Reader, size int64, opts interface{}) error {
+	var options minio.PutObjectOptions
+
+	// 转换选项类型
+	if putOpts, ok := opts.(PutObjectOptions); ok {
+		if putOpts.ContentType != "" {
+			options.ContentType = putOpts.ContentType
+		}
+	} else if contentType, ok := opts.(string); ok && contentType != "" {
+		options.ContentType = contentType
 	}
 
 	// 上传对象
@@ -63,7 +73,7 @@ func (c *Client) PutObject(ctx context.Context, bucketName, objectName string, r
 }
 
 // GetObject 获取对象
-func (c *Client) GetObject(ctx context.Context, bucketName, objectName string, opts GetObjectOptions) (io.ReadCloser, error) {
+func (c *Client) GetObject(ctx context.Context, bucketName, objectName string, opts interface{}) (io.ReadCloser, error) {
 	// 转换为MinIO选项
 	options := minio.GetObjectOptions{}
 
@@ -74,6 +84,11 @@ func (c *Client) GetObject(ctx context.Context, bucketName, objectName string, o
 	}
 
 	return obj, nil
+}
+
+// ListBuckets 列出所有桶
+func (c *Client) ListBuckets(ctx context.Context) ([]minio.BucketInfo, error) {
+	return c.client.ListBuckets(ctx)
 }
 
 // MakeBucket 创建存储桶
@@ -91,6 +106,12 @@ func (c *Client) RemoveObject(ctx context.Context, bucketName, objectName string
 	return c.client.RemoveObject(ctx, bucketName, objectName, minio.RemoveObjectOptions{})
 }
 
+// StatObject 获取对象信息
+func (c *Client) StatObject(ctx context.Context, bucketName, objectName string, opts interface{}) (minio.ObjectInfo, error) {
+	options := minio.StatObjectOptions{}
+	return c.client.StatObject(ctx, bucketName, objectName, options)
+}
+
 // ListObjects 列出对象
 func (c *Client) ListObjects(ctx context.Context, bucketName, prefix string, recursive bool) <-chan minio.ObjectInfo {
 	return c.client.ListObjects(ctx, bucketName, minio.ListObjectsOptions{
@@ -99,20 +120,28 @@ func (c *Client) ListObjects(ctx context.Context, bucketName, prefix string, rec
 	})
 }
 
-// CreateBucketIfNotExists 创建桶(如果不存在)
+// CreateBucketIfNotExists 如果存储桶不存在，则创建
 func (c *Client) CreateBucketIfNotExists(ctx context.Context, bucketName string) error {
+	// 检查存储桶是否存在
 	exists, err := c.client.BucketExists(ctx, bucketName)
 	if err != nil {
-		return err
+		return fmt.Errorf("检查存储桶是否存在失败: %w", err)
 	}
 
-	if !exists {
-		// 创建桶
-		err = c.client.MakeBucket(ctx, bucketName, minio.MakeBucketOptions{})
-		if err != nil {
-			return err
-		}
+	// 如果存储桶已存在，直接返回
+	if exists {
+		return nil
 	}
+
+	// 创建存储桶
+	err = c.client.MakeBucket(ctx, bucketName, minio.MakeBucketOptions{})
+	if err != nil {
+		return fmt.Errorf("创建存储桶失败: %w", err)
+	}
+
+	// 设置存储桶策略 (可选)
+	// 这里可以设置桶的访问策略，例如公共读取或私有访问
+	// 本例中我们设置为私有访问
 
 	return nil
 }

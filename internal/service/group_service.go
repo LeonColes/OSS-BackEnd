@@ -5,11 +5,14 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"regexp"
+	"strings"
 	"time"
 
 	"oss-backend/internal/model/dto"
 	"oss-backend/internal/model/entity"
 	"oss-backend/internal/repository"
+	"oss-backend/pkg/minio"
 )
 
 // GroupService 群组服务接口
@@ -33,6 +36,9 @@ type GroupService interface {
 
 	// 邀请码
 	GenerateInviteCode(ctx context.Context, req *dto.GroupInviteRequest, userID string) (*dto.GroupInviteResponse, error)
+
+	// 存储桶管理
+	EnsureGroupBucket(ctx context.Context, groupKey string) error
 }
 
 // groupService 群组服务实现
@@ -41,6 +47,7 @@ type groupService struct {
 	userRepo    repository.UserRepository
 	roleRepo    repository.RoleRepository
 	authService AuthService
+	minioClient *minio.Client
 }
 
 // NewGroupService 创建群组服务
@@ -49,12 +56,14 @@ func NewGroupService(
 	userRepo repository.UserRepository,
 	roleRepo repository.RoleRepository,
 	authService AuthService,
+	minioClient *minio.Client,
 ) GroupService {
 	return &groupService{
 		groupRepo:   groupRepo,
 		userRepo:    userRepo,
 		roleRepo:    roleRepo,
 		authService: authService,
+		minioClient: minioClient,
 	}
 }
 
@@ -115,6 +124,13 @@ func (s *groupService) CreateGroup(ctx context.Context, req *dto.GroupCreateRequ
 			// 可以考虑添加日志记录
 			fmt.Printf("设置Casbin角色失败: %v\n", err)
 		}
+	}
+
+	// 创建MinIO存储桶
+	err = s.EnsureGroupBucket(ctx, groupKey)
+	if err != nil {
+		// 记录错误但不阻止流程
+		fmt.Printf("创建MinIO存储桶失败: %v\n", err)
 	}
 
 	return nil
@@ -530,4 +546,38 @@ func generateGroupKey(name string) string {
 	// 编码为Base64
 	encoded := base64.URLEncoding.EncodeToString(b)
 	return fmt.Sprintf("%s_%s", name, encoded[:8])
+}
+
+// EnsureGroupBucket 确保群组存储桶存在
+func (s *groupService) EnsureGroupBucket(ctx context.Context, groupKey string) error {
+	if s.minioClient == nil {
+		return fmt.Errorf("MinIO客户端未初始化")
+	}
+
+	// 生成符合S3规范的桶名称：只能包含小写字母、数字和连字符
+	// 1. 将所有字符转为小写
+	lowerKey := strings.ToLower(groupKey)
+	// 2. 替换所有非法字符为连字符
+	reg := regexp.MustCompile(`[^a-z0-9\-]`)
+	sanitizedKey := reg.ReplaceAllString(lowerKey, "-")
+	// 3. 确保不以连字符开头或结尾
+	sanitizedKey = strings.Trim(sanitizedKey, "-")
+	// 4. 如果长度不足，添加随机字符串
+	if len(sanitizedKey) < 3 {
+		sanitizedKey = fmt.Sprintf("grp-%s", sanitizedKey)
+	}
+	// 5. 如果长度过长，截断
+	if len(sanitizedKey) > 60 {
+		sanitizedKey = sanitizedKey[:60]
+	}
+
+	bucketName := fmt.Sprintf("group-%s", sanitizedKey)
+
+	// 尝试创建存储桶(如果不存在)
+	err := s.minioClient.CreateBucketIfNotExists(ctx, bucketName)
+	if err != nil {
+		return fmt.Errorf("创建群组存储桶失败: %w", err)
+	}
+
+	return nil
 }
