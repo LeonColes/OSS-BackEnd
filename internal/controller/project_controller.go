@@ -354,7 +354,9 @@ func (c *ProjectController) RemovePermission(ctx *gin.Context) {
 // @Produce json
 // @Param Authorization header string true "Bearer {{token}}"
 // @Param id path int true "项目ID"
-// @Success 200 {object} common.Response{data=[]dto.ProjectUserResponse} "成功"
+// @Param page query int false "页码"
+// @Param size query int false "每页大小"
+// @Success 200 {object} common.Response{data=common.PageResult{list=[]dto.ProjectUserResponse}} "成功"
 // @Failure 400 {object} common.Response "请求参数错误"
 // @Failure 401 {object} common.Response "未授权"
 // @Failure 403 {object} common.Response "无权限"
@@ -372,13 +374,26 @@ func (c *ProjectController) ListProjectUsers(ctx *gin.Context) {
 	projectIDStr := ctx.Param("id")
 	projectID := projectIDStr
 
+	// 解析分页参数
+	var pageQuery dto.PageQuery
+	if err := ctx.ShouldBindQuery(&pageQuery); err != nil {
+		// 使用默认分页参数
+		pageQuery = dto.PageQuery{
+			Page: 1,
+			Size: 100, // 默认获取较多记录
+		}
+	}
+
 	// 调用服务获取项目成员
-	users, err := c.projectService.ListProjectUsers(ctx, projectID, userID.(string))
+	users, total, err := c.projectService.ListProjectUsers(ctx, projectID, userID.(string), &pageQuery)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, common.ErrorResponse("获取项目成员失败: "+err.Error()))
 		return
 	}
 
 	// 返回成功响应
-	ctx.JSON(http.StatusOK, common.SuccessResponse(users))
+	ctx.JSON(http.StatusOK, common.SuccessResponse(common.PageResult{
+		Total: total,
+		List:  users,
+	}))
 }

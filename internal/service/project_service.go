@@ -41,7 +41,7 @@ type ProjectService interface {
 	// 项目权限操作
 	SetPermission(ctx context.Context, req *dto.SetPermissionRequest, granterID string) error
 	RemovePermission(ctx context.Context, req *dto.RemovePermissionRequest, userID string) error
-	ListProjectUsers(ctx context.Context, projectID string, userID string) ([]*dto.ProjectUserResponse, error)
+	ListProjectUsers(ctx context.Context, projectID string, userID string, pageQuery *dto.PageQuery) ([]*dto.ProjectUserResponse, int64, error)
 
 	// 确保项目成员拥有适当的文件权限
 	EnsureProjectMemberPermissions(ctx context.Context, projectID string, userID string) error
@@ -511,13 +511,30 @@ func (s *projectService) GetUserProjects(ctx context.Context, query *dto.Project
 		return nil, 0, errors.New("用户不存在")
 	}
 
-	// 获取用户参与的项目
-	projects, err := s.projectRepo.GetUserProjects(ctx, userID)
+	// 确保分页参数有效
+	if query == nil {
+		query = &dto.ProjectQuery{
+			Page: 1,
+			Size: 10,
+		}
+	}
+
+	// 转换为通用分页参数
+	pageQuery := dto.PageQuery{
+		Page:      query.Page,
+		Size:      query.Size,
+		SortBy:    "created_at", // 默认按创建时间排序
+		SortOrder: "desc",       // 默认降序
+	}
+
+	// 直接使用数据库分页查询
+	projects, total, err := s.projectRepo.GetUserProjects(ctx, userID, pageQuery)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	// 过滤项目（根据查询条件）
+	// 过滤项目（根据查询条件）- 现在在数据库层进行
+	// TODO: 将过滤条件也传递到数据库层
 	var filteredProjects []entity.Project
 	for _, project := range projects {
 		// 按状态过滤
@@ -538,35 +555,9 @@ func (s *projectService) GetUserProjects(ctx context.Context, query *dto.Project
 		filteredProjects = append(filteredProjects, project)
 	}
 
-	// 计算总数
-	total := int64(len(filteredProjects))
-
-	// 分页处理
-	start := 0
-	end := len(filteredProjects)
-
-	if query.Page > 0 && query.Size > 0 {
-		start = (query.Page - 1) * query.Size
-		if start >= len(filteredProjects) {
-			start = 0
-		}
-
-		end = start + query.Size
-		if end > len(filteredProjects) {
-			end = len(filteredProjects)
-		}
-	}
-
-	// 超出范围时返回空数组
-	if start >= end {
-		return []*dto.ProjectResponse{}, total, nil
-	}
-
-	pagedProjects := filteredProjects[start:end]
-
 	// 构建响应
 	var responses []*dto.ProjectResponse
-	for _, project := range pagedProjects {
+	for _, project := range filteredProjects {
 		// 获取创建者信息
 		creator, err := s.userRepo.GetByID(ctx, project.CreatorID)
 		if err != nil {
@@ -784,31 +775,42 @@ func (s *projectService) RemovePermission(ctx context.Context, req *dto.RemovePe
 }
 
 // ListProjectUsers 列出项目用户
-func (s *projectService) ListProjectUsers(ctx context.Context, projectID string, userID string) ([]*dto.ProjectUserResponse, error) {
+func (s *projectService) ListProjectUsers(ctx context.Context, projectID string, userID string, pageQuery *dto.PageQuery) ([]*dto.ProjectUserResponse, int64, error) {
 	// 检查用户是否有权限查看项目成员
 	hasAccess, err := s.CheckUserProjectAccess(ctx, userID, projectID, []string{ProjectRoleAdmin, ProjectRoleEditor, ProjectRoleViewer})
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	if !hasAccess {
-		return nil, errors.New("没有权限查看项目成员")
+		return nil, 0, errors.New("没有权限查看项目成员")
 	}
 
 	// 获取项目信息
 	project, err := s.projectRepo.GetByID(ctx, projectID)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	if project == nil {
-		return nil, errors.New("项目不存在")
+		return nil, 0, errors.New("项目不存在")
+	}
+
+	// 设置默认分页参数
+	var query dto.PageQuery
+	if pageQuery != nil {
+		query = *pageQuery
+	} else {
+		query = dto.PageQuery{
+			Page: 1,
+			Size: 10,
+		}
 	}
 
 	// 获取项目成员列表
-	members, _, err := s.projectRepo.ListProjectMembers(ctx, projectID, 1, 1000) // 暂时不考虑分页
+	members, total, err := s.projectRepo.ListProjectMembers(ctx, projectID, query)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	// 构建响应
@@ -842,7 +844,7 @@ func (s *projectService) ListProjectUsers(ctx context.Context, projectID string,
 		})
 	}
 
-	return response, nil
+	return response, total, nil
 }
 
 // CheckUserProjectAccess 检查用户项目访问权限

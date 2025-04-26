@@ -25,7 +25,7 @@ type ProjectRepository interface {
 	// 查询方法
 	List(ctx context.Context, req *dto.ProjectListRequest) ([]entity.Project, int64, error)
 	GetByGroupID(ctx context.Context, groupID string) ([]entity.Project, error)
-	GetUserProjects(ctx context.Context, userID string) ([]entity.Project, error)
+	GetUserProjects(ctx context.Context, userID string, pageQuery dto.PageQuery) ([]entity.Project, int64, error)
 	GetAll(ctx context.Context) ([]entity.Project, error)
 
 	// 权限相关
@@ -33,14 +33,14 @@ type ProjectRepository interface {
 	GetProjectMember(ctx context.Context, projectID, userID string) (*entity.ProjectMember, error)
 	UpdateProjectMember(ctx context.Context, member *entity.ProjectMember) error
 	RemoveProjectMember(ctx context.Context, projectID, userID string) error
-	ListProjectMembers(ctx context.Context, projectID string, page, size int) ([]entity.ProjectMember, int64, error)
+	ListProjectMembers(ctx context.Context, projectID string, pageQuery dto.PageQuery) ([]entity.ProjectMember, int64, error)
 	CheckUserProjectRole(ctx context.Context, userID, projectID string, role string) (bool, error)
 	CheckUserInProject(ctx context.Context, userID, projectID string) (bool, error)
 	AddProjectPermission(ctx context.Context, permission *entity.Permission) error
 	GetProjectPermission(ctx context.Context, projectID, userID string) (*entity.Permission, error)
 	UpdateProjectPermission(ctx context.Context, permission *entity.Permission) error
 	RemoveProjectPermission(ctx context.Context, projectID, userID string) error
-	ListProjectPermissions(ctx context.Context, projectID string, page, size int) ([]entity.Permission, int64, error)
+	ListProjectPermissions(ctx context.Context, projectID string, pageQuery dto.PageQuery) ([]entity.Permission, int64, error)
 }
 
 // projectRepository 项目仓库实现
@@ -89,8 +89,8 @@ func (r *projectRepository) Delete(ctx context.Context, id string) error {
 // List 获取项目列表
 func (r *projectRepository) List(ctx context.Context, req *dto.ProjectListRequest) ([]entity.Project, int64, error) {
 	var projects []entity.Project
-	var total int64
 
+	// 构建基础查询
 	query := r.db.WithContext(ctx).Model(&entity.Project{})
 
 	// 条件筛选
@@ -106,33 +106,16 @@ func (r *projectRepository) List(ctx context.Context, req *dto.ProjectListReques
 		query = query.Where("status = ?", req.Status)
 	}
 
-	// 计算总数
-	err := query.Count(&total).Error
-	if err != nil {
-		return nil, 0, err
+	// 转换为通用分页参数
+	pageQuery := dto.PageQuery{
+		Page:      req.Page,
+		Size:      req.PageSize,
+		SortBy:    req.SortBy,
+		SortOrder: req.SortOrder,
 	}
 
-	// 分页查询
-	if req.Page > 0 && req.PageSize > 0 {
-		offset := (req.Page - 1) * req.PageSize
-		query = query.Offset(offset).Limit(req.PageSize)
-	}
-
-	// 排序
-	if req.SortBy != "" {
-		order := req.SortBy
-		if req.SortOrder == "desc" {
-			order += " DESC"
-		} else {
-			order += " ASC"
-		}
-		query = query.Order(order)
-	} else {
-		query = query.Order("created_at DESC")
-	}
-
-	// 执行查询
-	err = query.Preload("Group").Find(&projects).Error
+	// 使用通用分页方法执行查询
+	total, err := ExecutePageQuery(query.Preload("Group"), pageQuery, &projects)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -148,14 +131,22 @@ func (r *projectRepository) GetByGroupID(ctx context.Context, groupID string) ([
 }
 
 // GetUserProjects 获取用户的项目
-func (r *projectRepository) GetUserProjects(ctx context.Context, userID string) ([]entity.Project, error) {
+func (r *projectRepository) GetUserProjects(ctx context.Context, userID string, pageQuery dto.PageQuery) ([]entity.Project, int64, error) {
 	var projects []entity.Project
-	err := r.db.WithContext(ctx).
+
+	// 构建基础查询
+	query := r.db.WithContext(ctx).
 		Joins("JOIN project_members ON project_members.project_id = projects.id").
 		Where("project_members.user_id = ?", userID).
-		Preload("Group").
-		Find(&projects).Error
-	return projects, err
+		Preload("Group")
+
+	// 使用通用分页方法执行查询
+	total, err := ExecutePageQuery(query, pageQuery, &projects)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return projects, total, nil
 }
 
 // CreateProjectMember 添加项目成员
@@ -190,26 +181,17 @@ func (r *projectRepository) RemoveProjectMember(ctx context.Context, projectID, 
 }
 
 // ListProjectMembers 获取项目成员列表
-func (r *projectRepository) ListProjectMembers(ctx context.Context, projectID string, page, size int) ([]entity.ProjectMember, int64, error) {
+func (r *projectRepository) ListProjectMembers(ctx context.Context, projectID string, pageQuery dto.PageQuery) ([]entity.ProjectMember, int64, error) {
 	var members []entity.ProjectMember
-	var total int64
 
-	query := r.db.WithContext(ctx).Model(&entity.ProjectMember{}).Where("project_id = ?", projectID)
+	// 构建基础查询
+	query := r.db.WithContext(ctx).
+		Model(&entity.ProjectMember{}).
+		Where("project_id = ?", projectID).
+		Preload("User")
 
-	// 计算总数
-	err := query.Count(&total).Error
-	if err != nil {
-		return nil, 0, err
-	}
-
-	// 分页查询
-	if page > 0 && size > 0 {
-		offset := (page - 1) * size
-		query = query.Offset(offset).Limit(size)
-	}
-
-	// 执行查询
-	err = query.Preload("User").Find(&members).Error
+	// 使用通用分页方法执行查询
+	total, err := ExecutePageQuery(query, pageQuery, &members)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -269,26 +251,17 @@ func (r *projectRepository) RemoveProjectPermission(ctx context.Context, project
 }
 
 // ListProjectPermissions 获取项目权限列表
-func (r *projectRepository) ListProjectPermissions(ctx context.Context, projectID string, page, size int) ([]entity.Permission, int64, error) {
+func (r *projectRepository) ListProjectPermissions(ctx context.Context, projectID string, pageQuery dto.PageQuery) ([]entity.Permission, int64, error) {
 	var permissions []entity.Permission
-	var total int64
 
-	query := r.db.WithContext(ctx).Model(&entity.Permission{}).Where("project_id = ?", projectID)
+	// 构建基础查询
+	query := r.db.WithContext(ctx).
+		Model(&entity.Permission{}).
+		Where("project_id = ?", projectID).
+		Preload("User")
 
-	// 计算总数
-	err := query.Count(&total).Error
-	if err != nil {
-		return nil, 0, err
-	}
-
-	// 分页查询
-	if page > 0 && size > 0 {
-		offset := (page - 1) * size
-		query = query.Offset(offset).Limit(size)
-	}
-
-	// 执行查询
-	err = query.Preload("User").Find(&permissions).Error
+	// 使用通用分页方法执行查询
+	total, err := ExecutePageQuery(query, pageQuery, &permissions)
 	if err != nil {
 		return nil, 0, err
 	}
