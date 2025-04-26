@@ -378,14 +378,43 @@ func (s *projectService) GetProjectByID(ctx context.Context, id string, userID s
 
 // ListProjects 列出项目
 func (s *projectService) ListProjects(ctx context.Context, groupID string, userID string, query *dto.ProjectQuery) (*dto.PaginatedProjectResponse, error) {
+	// 添加调试日志
+	fmt.Printf("ListProjects - 用户ID: %s, 群组ID: %s\n", userID, groupID)
+
 	// 检查用户是否属于该分组
 	if len(groupID) > 0 {
-		isMember, err := s.groupRepo.CheckUserInGroup(ctx, groupID, userID)
+		// 首先检查用户是否是群组管理员或系统管理员
+		groupDomain := fmt.Sprintf("group:%s", groupID)
+		isGroupAdmin, err := s.authService.IsUserInRole(ctx, userID, entity.RoleGroupAdmin, groupDomain)
 		if err != nil {
-			return nil, err
+			fmt.Printf("检查群组管理员角色失败: %v\n", err)
+			return nil, fmt.Errorf("检查用户角色失败: %w", err)
 		}
-		if !isMember {
-			return nil, errors.New("没有权限查看该分组项目")
+		fmt.Printf("用户是否是群组管理员: %v\n", isGroupAdmin)
+
+		// 检查是否系统管理员
+		systemDomain := "system"
+		isSysAdmin, err := s.authService.IsUserInRole(ctx, userID, entity.RoleAdmin, systemDomain)
+		if err != nil {
+			fmt.Printf("检查系统管理员角色失败: %v\n", err)
+			return nil, fmt.Errorf("检查用户角色失败: %w", err)
+		}
+		fmt.Printf("用户是否是系统管理员: %v\n", isSysAdmin)
+
+		// 如果既不是群组管理员也不是系统管理员，则检查是否是群组成员
+		if !isGroupAdmin && !isSysAdmin {
+			fmt.Printf("用户既不是群组管理员也不是系统管理员，检查是否是群组成员\n")
+			isMember, err := s.groupRepo.CheckUserInGroup(ctx, groupID, userID)
+			if err != nil {
+				fmt.Printf("检查群组成员失败: %v\n", err)
+				return nil, err
+			}
+			fmt.Printf("用户是否是群组成员: %v\n", isMember)
+			if !isMember {
+				return nil, errors.New("没有权限查看该分组项目")
+			}
+		} else {
+			fmt.Printf("用户是管理员，跳过群组成员检查\n")
 		}
 	}
 
