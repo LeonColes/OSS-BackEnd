@@ -13,11 +13,11 @@ import (
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 
-	"oss-backend/internal/interfaces"
+	"oss-backend/internal/utils"
 )
 
 // 确保Client实现了MinioClient接口
-var _ interfaces.MinioClient = (*Client)(nil)
+var _ utils.MinioClient = (*Client)(nil)
 
 // Config MinIO配置
 type Config struct {

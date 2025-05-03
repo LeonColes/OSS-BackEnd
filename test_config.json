@@ -1,6 +1,0 @@
-{
-  "api_endpoint": "http://localhost:8081/api/v1",
-  "admin_user": "admin@example.com",
-  "admin_pass": "Admin123",
-  "user_prefix": "seqtest"
-}

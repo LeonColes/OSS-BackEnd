@@ -1,8 +1,7 @@
-package routes
+package controller
 
 import (
-	_ "oss-backend/docs/swagger"        // 统一Swagger文档导入路径
-	_ "oss-backend/internal/controller" // 导入控制器包以确保Swagger正确扫描
+	_ "oss-backend/docs/swagger" // 统一Swagger文档导入路径
 
 	"github.com/casbin/casbin/v2"
 	"github.com/gin-gonic/gin"
@@ -10,7 +9,6 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"gorm.io/gorm"
 
-	"oss-backend/internal/controller"
 	"oss-backend/internal/middleware"
 	"oss-backend/internal/repository"
 	"oss-backend/internal/service"
@@ -68,7 +66,7 @@ func registerRoleRoutes(
 	authService service.AuthService,
 ) {
 	// 创建依赖
-	roleController := controller.NewRoleController(authService)
+	roleController := NewRoleController(authService)
 
 	// 角色相关路由 - 需要管理员权限
 	roleGroup := apiGroup.Group("/role")
@@ -94,7 +92,7 @@ func registerUserRoutes(
 ) {
 	// 创建依赖
 	userService := service.NewUserService(userRepo, roleRepo, authService)
-	userController := controller.NewUserController(userService)
+	userController := NewUserController(userService)
 
 	// 用户相关路由
 	userGroup := apiGroup.Group("/user")
@@ -122,7 +120,7 @@ func registerUserRoutes(
 				// 用户角色管理
 				adminGroup.GET("/roles/:id", userController.GetUserRoles)
 				adminGroup.POST("/roles/:id", userController.AssignRoles)
-				adminGroup.POST("/roles/:id/remove", userController.RemoveRoles)
+				adminGroup.POST("/roles/remove/:id", userController.RemoveRoles)
 			}
 		}
 	}
@@ -137,11 +135,11 @@ func registerGroupRoutes(
 	jwtMiddleware *middleware.JWTAuthMiddleware,
 	authMiddleware *middleware.AuthMiddleware,
 	authService service.AuthService,
-	minioClient *minio.Client, // 添加MinIO客户端参数
+	minioClient *minio.Client,
 ) {
 	// 创建依赖
 	groupService := service.NewGroupService(groupRepo, userRepo, roleRepo, authService, minioClient)
-	groupController := controller.NewGroupController(groupService)
+	groupController := NewGroupController(groupService)
 
 	// 群组相关路由
 	groupGroup := apiGroup.Group("/group")
@@ -192,7 +190,7 @@ func registerProjectRoutes(
 		db,
 		minioClient,
 	)
-	projectController := controller.NewProjectController(projectService)
+	projectController := NewProjectController(projectService)
 
 	// 定义中间件辅助函数
 	getProjectGroupID := func(c *gin.Context) (string, error) {
@@ -238,7 +236,7 @@ func registerFileRoutes(
 	fileService := service.NewFileService(fileRepo, projectRepo, statRepo, minioClient, authService, db)
 
 	// 创建文件控制器
-	fileController := controller.NewFileController(fileService, nil, authService)
+	fileController := NewFileController(fileService, nil, authService)
 
 	// 定义文件中间件辅助函数
 	getFileGroupID := func(c *gin.Context) (string, error) {
@@ -249,14 +247,12 @@ func registerFileRoutes(
 	fileGroup := apiGroup.Group("/file")
 	fileGroup.Use(jwtMiddleware.AuthMiddleware())
 	{
-		// 文件管理路由
+		// 文件管理
 		fileGroup.POST("/upload", authMiddleware.Authorize("files", "create", getFileGroupID), fileController.Upload)
 		fileGroup.GET("/download/:id", authMiddleware.Authorize("files", "read", getFileGroupID), fileController.Download)
-		fileGroup.GET("/public-url/:id", authMiddleware.Authorize("files", "read", getFileGroupID), fileController.GetPublicURL)
-		fileGroup.GET("/list", authMiddleware.Authorize("files", "read", getFileGroupID), fileController.ListFiles)
-		fileGroup.POST("/folder", authMiddleware.Authorize("files", "create", getFileGroupID), fileController.CreateFolder)
 		fileGroup.GET("/delete/:id", authMiddleware.Authorize("files", "delete", getFileGroupID), fileController.DeleteFile)
 		fileGroup.GET("/versions/:id", authMiddleware.Authorize("files", "read", getFileGroupID), fileController.GetFileVersions)
+		fileGroup.GET("/list", authMiddleware.Authorize("files", "read", getFileGroupID), fileController.ListFiles)
 	}
 
 	// 文件分享相关路由

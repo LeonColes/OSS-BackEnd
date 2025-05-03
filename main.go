@@ -18,11 +18,11 @@ import (
 	// 导入所有控制器以确保扫描到API注释
 	_ "oss-backend/internal/controller"
 
+	"oss-backend/internal/controller"
 	"oss-backend/internal/model/entity"
 	"oss-backend/internal/repository"
 	"oss-backend/internal/service"
 	"oss-backend/pkg/minio"
-	"oss-backend/routes"
 )
 
 // @title OSS-Backend API
@@ -108,8 +108,8 @@ func main() {
 	// 初始化应用
 	r := gin.Default()
 
-	// 设置路由 (需要将 Enforcer 传递下去，或者通过依赖注入)
-	routes.SetupRouter(r, db, enforcer, minioClient)
+	// 设置路由
+	controller.SetupRouter(r, db, enforcer, minioClient)
 
 	// 读取服务器端口配置
 	port := viper.GetInt("server.port")
